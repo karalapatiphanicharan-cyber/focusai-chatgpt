@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FocusAI",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A Chrome extension that transforms ChatGPT into a distraction-free study workspace while tracking daily ChatGPT usage.",
   "permissions": [
     "activeTab",
@@ -26,6 +26,10 @@
         "https://chat.openai.com/*"
       ],
       "js": [
+        "core/messaging/messages.js",
+        "core/platform/chatgpt.js",
+        "core/storage/storage.js",
+        "core/focus/focus-engine.js",
         "content/content.js"
       ],
       "run_at": "document_start"
