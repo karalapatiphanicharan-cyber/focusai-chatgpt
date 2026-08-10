@@ -1,4 +1,4 @@
-/* Polished Premium Dark-Theme Stylesheet for FocusAI (Phase -0.5) */
+/* Polished Premium Dark-Theme Stylesheet for FocusAI (Phase -1.1) */
 
 body {
   margin: 0;
@@ -76,6 +76,13 @@ body {
 
 .main-content {
   margin: 2px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spacer {
+  height: 0px;
 }
 
 .status-card {
@@ -87,6 +94,12 @@ body {
   flex-direction: column;
   gap: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.focus-control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .status-label {
@@ -106,16 +119,78 @@ body {
 }
 
 .status-value.detected {
-  color: #22D3EE; /* Accent color */
+  color: #22D3EE; /* Accent color (#22D3EE) */
 }
 
 .status-value.not-detected {
-  color: #A1A1AA; /* Muted appearance */
+  color: #A1A1AA; /* Secondary text color (#A1A1AA) */
+}
+
+.status-value.active {
+  color: #34D399; /* Success color (#34D399) */
+}
+
+.status-value.inactive {
+  color: #A1A1AA; /* Secondary text color */
 }
 
 .status-dot {
   font-size: 12px;
   line-height: 1;
+}
+
+/* Premium Custom Switch Toggle styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #27272A;
+  transition: .25s ease-in-out;
+  border: 1px solid #3F3F46;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #FAFAFA;
+  transition: .25s ease-in-out;
+}
+
+input:checked + .slider {
+  background-color: #6366F1; /* Primary color (#6366F1) */
+  border-color: #6366F1;
+}
+
+input:checked + .slider:before {
+  transform: translateX(14px);
+}
+
+.slider.round {
+  border-radius: 20px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
 }
 
 .footer {

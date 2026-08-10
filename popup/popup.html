@@ -22,10 +22,28 @@
     <hr class="divider">
 
     <main class="main-content">
+      <!-- ChatGPT Platform Detection Card -->
       <div class="status-card">
         <span class="status-label">ChatGPT</span>
         <div id="status-indicator" class="status-value not-detected">
           <span class="status-dot">○</span> Not detected
+        </div>
+      </div>
+
+      <!-- Spacer -->
+      <div class="spacer"></div>
+
+      <!-- Focus State Persistent Control Card -->
+      <div class="status-card">
+        <div class="focus-control-header">
+          <span class="status-label">Focus State</span>
+          <label class="switch">
+            <input type="checkbox" id="focus-toggle">
+            <span class="slider round"></span>
+          </label>
+        </div>
+        <div id="focus-state-text" class="status-value inactive">
+          Inactive
         </div>
       </div>
     </main>
@@ -33,11 +51,12 @@
     <hr class="divider">
 
     <footer class="footer">
-      <p class="footer-title">Phase -0.5</p>
-      <p class="footer-subtitle">Brand foundation</p>
+      <p class="footer-title">Phase -1.1</p>
+      <p class="footer-subtitle">State Management + Communication Layer</p>
     </footer>
   </div>
-  <script src="../core/platform/chatgpt.js"></script>
+  <!-- Loading messaging and core contracts forpopup logic access -->
+  <script src="../core/messaging/messages.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

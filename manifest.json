@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "FocusAI",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A Chrome extension that transforms ChatGPT into a distraction-free study workspace while tracking daily ChatGPT usage.",
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "storage"
   ],
   "action": {
     "default_popup": "popup/popup.html",
