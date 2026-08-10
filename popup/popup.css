@@ -193,6 +193,56 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 
+/* Visual Disabled State for Toggle Switch */
+.switch.disabled {
+  pointer-events: none; /* prevent any clicks on the wrapper */
+}
+
+input:disabled + .slider {
+  background-color: #1F1F22 !important;
+  border-color: #27272A !important;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input:disabled + .slider:before {
+  background-color: #52525B !important;
+}
+
+/* Premium Action Card & Button for Open ChatGPT link */
+.action-card {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.action-btn {
+  background-color: #6366F1; /* Primary brand color (#6366F1) */
+  color: #FAFAFA;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.25s ease, transform 0.15s ease;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  font-family: inherit;
+}
+
+.action-btn:hover {
+  background-color: #4F46E5; /* Slightly darker violet */
+  transform: translateY(-1px);
+}
+
+.action-btn:active {
+  background-color: #4338CA;
+  transform: translateY(0);
+}
+
 .footer {
   text-align: center;
   display: flex;
