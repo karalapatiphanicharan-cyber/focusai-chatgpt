@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FocusAI</title>
-  <link rel="stylesheet" href="popup.css">
+  <link class="style-link" rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
@@ -37,7 +37,7 @@
       <div class="status-card">
         <div class="focus-control-header">
           <span class="status-label">Focus State</span>
-          <label class="switch">
+          <label class="switch" id="focus-switch-wrapper">
             <input type="checkbox" id="focus-toggle">
             <span class="slider round"></span>
           </label>
@@ -45,6 +45,11 @@
         <div id="focus-state-text" class="status-value inactive">
           Inactive
         </div>
+      </div>
+
+      <!-- Open ChatGPT Action (hidden by default) -->
+      <div id="open-chatgpt-container" class="action-card" style="display: none;">
+        <button id="open-chatgpt-btn" class="action-btn">Open ChatGPT</button>
       </div>
     </main>
 
@@ -55,7 +60,7 @@
       <p class="footer-subtitle">State Management + Communication Layer</p>
     </footer>
   </div>
-  <!-- Loading messaging and core contracts forpopup logic access -->
+  <!-- Loading messaging and core contracts for popup logic access -->
   <script src="../core/messaging/messages.js"></script>
   <script src="popup.js"></script>
 </body>
