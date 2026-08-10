@@ -7,8 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const activeTab = tabs[0];
       const url = activeTab.url || '';
 
-      // Check if URL matches chatgpt.com or chat.openai.com
-      const isChatGPT = url.includes('chatgpt.com') || url.includes('chat.openai.com');
+      // Use the newly established Platform detection module
+      const platform = self.FocusAI && self.FocusAI.Platform;
+      const isChatGPT = platform ? platform.isChatGPTUrl(url) : (url.includes('chatgpt.com') || url.includes('chat.openai.com'));
 
       if (isChatGPT) {
         statusIndicator.className = 'status-value detected';
