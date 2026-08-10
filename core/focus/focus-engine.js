@@ -84,7 +84,6 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
-    // Selector strategies
     const candidates = [
       document.querySelector('nav[aria-label*="history" i]'),
       document.querySelector('nav[aria-label*="sidebar" i]'),
@@ -92,7 +91,8 @@ self.FocusAI.FocusEngine = {
       document.querySelector('nav'),
       document.querySelector('[data-sidebar]'),
       document.querySelector('.sidebar'),
-      document.getElementById('sidebar')
+      document.getElementById('sidebar'),
+      document.querySelector('aside')
     ];
 
     const element = candidates.find(el => el !== null);
@@ -103,12 +103,12 @@ self.FocusAI.FocusEngine = {
       const rect = element.getBoundingClientRect();
       dimensions = `${Math.round(rect.width)}x${Math.round(rect.height)} at (${Math.round(rect.left)}, ${Math.round(rect.top)})`;
 
-      confidence += 0.3; // Found element
+      confidence += 0.3;
       signals.push("Located HTML node match");
 
-      if (element.tagName === "NAV") {
+      if (element.tagName === "NAV" || element.tagName === "ASIDE") {
         confidence += 0.2;
-        signals.push("Semantic HTML <nav> tag match");
+        signals.push(`Semantic HTML <${element.tagName.toLowerCase()}> tag match`);
       }
 
       const ariaLabel = element.getAttribute("aria-label") || "";
@@ -117,7 +117,6 @@ self.FocusAI.FocusEngine = {
         signals.push(`ARIA label matches sidebar context ("${ariaLabel}")`);
       }
 
-      // Geolocation check (is it pinned on the left?)
       if (rect.left === 0 && rect.width > 100 && rect.width < 450) {
         confidence += 0.25;
         signals.push("Left-side layouts matching sidebar dimensions");
@@ -181,7 +180,6 @@ self.FocusAI.FocusEngine = {
         signals.push("Top sticky/fixed coordinates");
       }
 
-      // Check model selector dropdown indicators
       if (element.querySelector('[aria-haspopup="menu"]') || element.innerText.includes("ChatGPT")) {
         confidence += 0.1;
         signals.push("Contains model selection indicator elements");
@@ -205,7 +203,7 @@ self.FocusAI.FocusEngine = {
   },
 
   /**
-   * Category Heuristics - HEADER ACTIONS / CONVERSATION ACTIONS
+   * Category Heuristics - HEADER ACTIONS
    */
   _classifyHeaderActions: function() {
     const signals = [];
@@ -215,7 +213,6 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
-    // Look for share buttons, settings button, options menus near header or top-right
     const candidates = [
       document.querySelector('button[aria-label*="Share" i]'),
       document.querySelector('button[aria-label*="options" i]'),
@@ -242,7 +239,6 @@ self.FocusAI.FocusEngine = {
         signals.push(`ARIA label or text content matches top-right option context ("${label.trim()}")`);
       }
 
-      // Position check
       if (rect.top < 100 && rect.right > (window.innerWidth - 300)) {
         confidence += 0.2;
         signals.push("Top-right quadrant coordinates");
@@ -257,7 +253,7 @@ self.FocusAI.FocusEngine = {
       confidence: Math.min(1.0, confidence),
       protected: false,
       futureHideCandidate: true,
-      safeCandidate: false, // marked false to exercise careful discovery handling as specified
+      safeCandidate: false,
       signals,
       selectorUsed,
       tag,
@@ -266,7 +262,7 @@ self.FocusAI.FocusEngine = {
   },
 
   /**
-   * Category Heuristics - CONVERSATION (CONTENT) - Protected
+   * Category Heuristics - CONVERSATION (CONTENT) - Protected (Confidence >= 0.85)
    */
   _classifyConversation: function() {
     const signals = [];
@@ -276,10 +272,12 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
+    // Locate the scroller/parent holding chat turn rows
     const candidates = [
       document.querySelector('.react-scroll-to-bottom--css'),
       document.querySelector('[role="presentation"] .flex-col'),
-      document.querySelector('div[data-testid*="conversation-turn"]'),
+      document.querySelector('div[data-testid*="conversation-turn"]')?.parentElement,
+      document.querySelector('article')?.parentElement,
       document.querySelector('.conversation-container'),
       document.querySelector('main .flex-col')
     ];
@@ -292,30 +290,26 @@ self.FocusAI.FocusEngine = {
       const rect = element.getBoundingClientRect();
       dimensions = `${Math.round(rect.width)}x${Math.round(rect.height)} at (${Math.round(rect.left)}, ${Math.round(rect.top)})`;
 
-      confidence += 0.3;
-      signals.push("Located main structural parent turn/scroller");
+      confidence += 0.4;
+      signals.push("Located main structural conversation parent");
 
-      // Verify children contain core learning elements like code blocks, tables, lists, or alternate turns
+      // Verify the presence of chat content children (articles or turn blocks)
+      const articles = element.querySelectorAll('article');
+      const turns = element.querySelectorAll('[data-testid*="conversation-turn"], [data-role], .group');
       const codeBlocks = element.querySelectorAll('pre, code');
       const tables = element.querySelectorAll('table');
-      const userTurns = element.querySelectorAll('[data-testid*="user-message"], [data-role="user"]');
-      const assistantTurns = element.querySelectorAll('[data-testid*="assistant-message"], [data-role="assistant"]');
 
+      if (articles.length > 0 || turns.length > 0) {
+        confidence += 0.3;
+        signals.push(`Contains message turns / articles (count: ${articles.length || turns.length})`);
+      }
       if (codeBlocks.length > 0) {
-        confidence += 0.2;
-        signals.push(`Contains helper code elements (${codeBlocks.length} found)`);
+        confidence += 0.15;
+        signals.push(`Contains code/markdown blocks (count: ${codeBlocks.length})`);
       }
       if (tables.length > 0) {
-        confidence += 0.1;
-        signals.push("Contains structured data tables");
-      }
-      if (userTurns.length > 0 || assistantTurns.length > 0) {
-        confidence += 0.3;
-        signals.push(`Contains explicit user/assistant turns (turns detected: ${userTurns.length + assistantTurns.length})`);
-      } else {
-        // Fallback checks
-        confidence += 0.1;
-        signals.push("Default content flow matching scrollable layouts");
+        confidence += 0.15;
+        signals.push(`Contains tables (count: ${tables.length})`);
       }
 
       selectorUsed = element.className ? `.${element.className.trim().split(/\s+/)[0]}` : "div";
@@ -323,7 +317,7 @@ self.FocusAI.FocusEngine = {
 
     return {
       found,
-      category: "CONTENT",
+      category: "CONVERSATION",
       confidence: Math.min(1.0, confidence),
       protected: true,
       futureHideCandidate: false,
@@ -343,28 +337,44 @@ self.FocusAI.FocusEngine = {
     let confidence = 0.0;
     let found = false;
 
-    const elements = document.querySelectorAll('[data-testid*="user-message"], [data-role="user"], div.group[data-role="user"]');
+    // Direct role or testid queries
+    let elements = Array.from(document.querySelectorAll('[data-testid*="user-message"], [data-role="user"], div.group[data-role="user"]'));
+
+    // Relative negative-heuristics match: articles that represent chat turns but are user-sourced (no copy button, no .markdown prose)
+    if (elements.length === 0) {
+      const articles = Array.from(document.querySelectorAll('article'));
+      elements = articles.filter(art => {
+        const hasCopy = art.querySelector('button[aria-label*="Copy" i]') || art.innerText.toLowerCase().includes("copy response");
+        const hasMarkdown = art.querySelector('.markdown, .prose');
+        return !hasCopy && !hasMarkdown;
+      });
+    }
 
     if (elements.length > 0) {
       found = true;
-      confidence += 0.5;
-      signals.push(`Found ${elements.length} active user question turns`);
+      tag = "ARTICLE";
+      confidence += 0.4;
+      signals.push(`Found ${elements.length} user question turns`);
 
       const firstEl = elements[0];
-      if (firstEl.tagName === "DIV") {
-        confidence += 0.2;
-      }
-      if (firstEl.getAttribute("data-role") === "user" || firstEl.getAttribute("data-testid")?.includes("user")) {
+      const testid = firstEl.getAttribute("data-testid") || "";
+      const role = firstEl.getAttribute("data-role") || "";
+
+      if (testid.includes("user") || role === "user") {
         confidence += 0.3;
-        signals.push("Matched user role attributes explicitly");
+        signals.push("Matched explicit user turn attributes");
       }
-    } else {
-      // Look for fallback patterns (e.g. elements on the right or user icon)
-      const fallbackUserText = document.querySelector('div[style*="text-align: right"]');
-      if (fallbackUserText) {
-        found = true;
-        confidence = 0.6;
-        signals.push("Matched user message via style alignment heuristics");
+
+      if (firstEl.tagName === "ARTICLE") {
+        confidence += 0.2;
+        signals.push("Matched semantic chat message <article> turns");
+      }
+
+      // Geolocation right alignment or padding
+      const rect = firstEl.getBoundingClientRect();
+      if (rect.right > (window.innerWidth / 2)) {
+        confidence += 0.1;
+        signals.push("Located right-aligned user bubble orientation");
       }
     }
 
@@ -376,8 +386,8 @@ self.FocusAI.FocusEngine = {
       futureHideCandidate: false,
       safeCandidate: false,
       signals,
-      selectorUsed: '[data-role="user"]',
-      tag: found ? "DIV" : "N/A",
+      selectorUsed: 'article:not(:has(.markdown))',
+      tag: found ? tag : "N/A",
       dimensions: "N/A"
     };
   },
@@ -390,48 +400,61 @@ self.FocusAI.FocusEngine = {
     let confidence = 0.0;
     let found = false;
 
-    const elements = document.querySelectorAll('[data-testid*="assistant-message"], [data-role="assistant"], div.group[data-role="assistant"]');
+    // Direct role/testid queries
+    let elements = Array.from(document.querySelectorAll('[data-testid*="assistant-message"], [data-role="assistant"], div.group[data-role="assistant"]'));
+
+    // Structural matches: articles containing markdown or message actions
+    if (elements.length === 0) {
+      const articles = Array.from(document.querySelectorAll('article'));
+      elements = articles.filter(art => {
+        const hasCopy = art.querySelector('button[aria-label*="Copy" i], button[aria-label*="response" i]');
+        const hasMarkdown = art.querySelector('.markdown, .prose') || art.querySelector('p, pre, table, ul, ol');
+        return hasCopy || hasMarkdown;
+      });
+    }
 
     if (elements.length > 0) {
       found = true;
-      confidence += 0.5;
+      tag = "ARTICLE";
+      confidence += 0.4;
       signals.push(`Found ${elements.length} assistant response turns`);
 
       const firstEl = elements[0];
-      if (firstEl.getAttribute("data-role") === "assistant" || firstEl.getAttribute("data-testid")?.includes("assistant")) {
+      const testid = firstEl.getAttribute("data-testid") || "";
+      const role = firstEl.getAttribute("data-role") || "";
+
+      if (testid.includes("assistant") || role === "assistant") {
         confidence += 0.3;
-        signals.push("Matched assistant role attributes explicitly");
+        signals.push("Matched explicit assistant turn attributes");
       }
-      if (firstEl.querySelector('pre, code, p, table, ul, ol')) {
-        confidence += 0.2;
-        signals.push("Contains markdown content elements (paragraphs, code, tables, lists)");
+
+      if (firstEl.querySelector('.markdown, .prose') || firstEl.querySelector('p, pre, table, ul, ol')) {
+        confidence += 0.25;
+        signals.push("Contains prose learning content (code, tables, lists, text blocks)");
       }
-    } else {
-      // Fallback: search paragraph structures inside chat container
-      const genericParagraph = document.querySelector('p');
-      if (genericParagraph) {
-        found = true;
-        confidence = 0.6;
-        signals.push("Matched generic content containers fallback");
+
+      if (firstEl.tagName === "ARTICLE") {
+        confidence += 0.05;
+        signals.push("Matched semantic chat message <article> turns");
       }
     }
 
     return {
       found,
-      category: "ASSISTANT_MESSAGES",
+      category: "ASSISTANT_RESPONSES",
       confidence: Math.min(1.0, confidence),
       protected: true,
       futureHideCandidate: false,
       safeCandidate: false,
       signals,
-      selectorUsed: '[data-role="assistant"]',
-      tag: found ? "DIV" : "N/A",
+      selectorUsed: 'article:has(.markdown)',
+      tag: found ? tag : "N/A",
       dimensions: "N/A"
     };
   },
 
   /**
-   * Category Heuristics - MESSAGE ACTIONS (Response control toolbars)
+   * Category Heuristics - MESSAGE ACTIONS
    */
   _classifyMessageActions: function() {
     const signals = [];
@@ -441,13 +464,16 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
+    // Locale-independent action bars typically located within the assistant article
     const candidates = [
       document.querySelector('button[aria-label*="Copy" i]'),
       document.querySelector('button[aria-label*="Good response" i]'),
       document.querySelector('button[aria-label*="Bad response" i]'),
       document.querySelector('button[aria-label*="Read aloud" i]'),
       document.querySelector('button[aria-label*="Regenerate" i]'),
-      document.querySelector('.message-actions-toolbar')
+      document.querySelector('.message-actions-toolbar'),
+      // Find button rows at the bottom of assistant message blocks
+      document.querySelector('article button[aria-label]')
     ];
 
     const element = candidates.find(el => el !== null);
@@ -463,15 +489,14 @@ self.FocusAI.FocusEngine = {
 
       const ariaLabel = element.getAttribute("aria-label") || "";
       if (/copy|response|thumbs|like|dislike|read|sound|regenerate/i.test(ariaLabel)) {
-        confidence += 0.4;
+        confidence += 0.35;
         signals.push(`ARIA label matches message action toolbar context ("${ariaLabel}")`);
       }
 
-      // Check if it's nested near or inside assistant block
-      const isNearAssistant = element.closest('[data-role="assistant"]') || element.closest('[data-testid*="assistant"]');
-      if (isNearAssistant) {
-        confidence += 0.2;
-        signals.push("Located adjacent to or inside Assistant message bubble");
+      const isInsideAssistant = element.closest('[data-role="assistant"]') || element.closest('[data-testid*="assistant"]') || element.closest('article');
+      if (isInsideAssistant) {
+        confidence += 0.25;
+        signals.push("Located adjacent to or nested inside Assistant response block");
       }
 
       selectorUsed = `button[aria-label="${ariaLabel.replace(/"/g, '\\"')}"]`;
@@ -492,7 +517,7 @@ self.FocusAI.FocusEngine = {
   },
 
   /**
-   * Category Heuristics - BOTTOM DISCLAIMER
+   * Category Heuristics - DISCLAIMER
    */
   _classifyDisclaimer: function() {
     const signals = [];
@@ -502,17 +527,38 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
-    // Text-based matching on live DOM nodes
+    // Text-based matching on paragraphs, spans, and divs
     const allParagraphsAndSpans = Array.from(document.querySelectorAll('p, span, div'));
-    const element = allParagraphsAndSpans.find(el => {
-      if (el.children.length > 2) return false; // look for flat leaf text elements
+    let element = allParagraphsAndSpans.find(el => {
+      if (el.children.length > 2) return false;
       const text = (el.textContent || "").toLowerCase();
       return (
         text.includes("can make mistakes") ||
         text.includes("check important info") ||
-        text.includes("check response")
+        text.includes("check response") ||
+        text.includes("pueden cometer") ||
+        text.includes("fehler machen") ||
+        text.includes("peut se tromper")
       );
     });
+
+    // Fallback: look for the bottom-most small muted text element below any forms
+    if (!element) {
+      const forms = Array.from(document.querySelectorAll('form'));
+      if (forms.length > 0) {
+        const lastForm = forms[forms.length - 1];
+        const elementsBelowForm = Array.from(document.querySelectorAll('p, span, div')).filter(el => {
+          if (el.children.length > 0) return false;
+          const rect = el.getBoundingClientRect();
+          const formRect = lastForm.getBoundingClientRect();
+          return rect.top > formRect.bottom && rect.height > 5 && rect.height < 40;
+        });
+        if (elementsBelowForm.length > 0) {
+          element = elementsBelowForm[0];
+          signals.push("Located bottom-most small text node below composer form");
+        }
+      }
+    }
 
     if (element) {
       found = true;
@@ -521,20 +567,16 @@ self.FocusAI.FocusEngine = {
       dimensions = `${Math.round(rect.width)}x${Math.round(rect.height)} at (${Math.round(rect.left)}, ${Math.round(rect.top)})`;
 
       confidence += 0.4;
-      signals.push("Located text-matching DOM node");
+      signals.push("Located text-matching/position-matching footer node");
 
       const text = element.textContent || "";
-      if (text.includes("ChatGPT can make mistakes")) {
-        confidence += 0.3;
-        signals.push("Matched full core ChatGPT disclaimer text sequence");
-      } else {
-        confidence += 0.15;
-        signals.push("Matched partial disclaimer text sequence");
+      if (/mistakes|info|errors|limitations|errores|fehler|tromper/i.test(text)) {
+        confidence += 0.35;
+        signals.push("Matched keyword disclaimer text sequences");
       }
 
-      // Verify position (is it in the lower part of the screen?)
       if (rect.top > (window.innerHeight - 200)) {
-        confidence += 0.3;
+        confidence += 0.25;
         signals.push("Bottom footer-level placement coordinates");
       }
 
@@ -566,41 +608,37 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
-    const candidates = [
-      document.querySelector('#prompt-textarea')?.closest('form'),
-      document.querySelector('#prompt-textarea')?.closest('div[role="presentation"]'),
-      document.querySelector('form[action*="chat"]'),
-      document.querySelector('.composer-container'),
-      document.querySelector('main form')
-    ];
+    // Locate the prompt text input (textarea or contenteditable)
+    const textInput = document.querySelector('#prompt-textarea') || document.querySelector('textarea') || document.querySelector('div[contenteditable="true"]');
 
-    const element = candidates.find(el => el !== null);
+    if (textInput) {
+      // Find its closest form parent, presentation container, or surrounding wrapper
+      const element = textInput.closest('form') || textInput.closest('div[role="presentation"]') || textInput.parentElement;
 
-    if (element) {
-      found = true;
-      tag = element.tagName;
-      const rect = element.getBoundingClientRect();
-      dimensions = `${Math.round(rect.width)}x${Math.round(rect.height)} at (${Math.round(rect.left)}, ${Math.round(rect.top)})`;
+      if (element) {
+        found = true;
+        tag = element.tagName;
+        const rect = element.getBoundingClientRect();
+        dimensions = `${Math.round(rect.width)}x${Math.round(rect.height)} at (${Math.round(rect.left)}, ${Math.round(rect.top)})`;
 
-      confidence += 0.3;
-      signals.push("Located composer wrapper node match");
-
-      if (element.querySelector('#prompt-textarea')) {
         confidence += 0.4;
-        signals.push("Contains core '#prompt-textarea' input node child");
-      }
+        signals.push("Located parent composer container of text input");
 
-      if (element.tagName === "FORM") {
-        confidence += 0.1;
-        signals.push("Constructed as a standard interactive HTML form");
-      }
+        if (element.tagName === "FORM") {
+          confidence += 0.35;
+          signals.push("Constructed as a standard interactive HTML form");
+        } else {
+          confidence += 0.15;
+          signals.push("Container acts as a text input structural presentation box");
+        }
 
-      if (rect.top > (window.innerHeight - 350)) {
-        confidence += 0.2;
-        signals.push("Lower viewport interactive coordinates");
-      }
+        if (rect.top > (window.innerHeight - 350)) {
+          confidence += 0.25;
+          signals.push("Lower viewport interactive coordinates");
+        }
 
-      selectorUsed = element.id ? `#${element.id}` : element.tagName.toLowerCase();
+        selectorUsed = element.id ? `#${element.id}` : element.tagName.toLowerCase();
+      }
     }
 
     return {
@@ -625,7 +663,6 @@ self.FocusAI.FocusEngine = {
     let confidence = 0.0;
     let found = false;
 
-    // Look for attach button, microphone, send button inside or around composer
     const elements = [
       document.querySelector('button[data-testid*="send-button"]'),
       document.querySelector('button[aria-label*="Attach" i]'),
@@ -636,13 +673,13 @@ self.FocusAI.FocusEngine = {
 
     if (elements.length > 0) {
       found = true;
-      confidence += 0.4;
+      confidence += 0.5;
       signals.push(`Found ${elements.length} active composer accessory controls`);
 
       const firstEl = elements[0];
-      const isInsideForm = firstEl.closest('form');
+      const isInsideForm = firstEl.closest('form') || firstEl.closest('[id*="composer"]');
       if (isInsideForm) {
-        confidence += 0.4;
+        confidence += 0.3;
         signals.push("Controls are nested within the main Composer form");
       }
 
