@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Dark premium background -->
+  <rect width="512" height="512" rx="112" fill="#09090B"/>
+
+  <!-- Definitions for Gradients -->
+  <defs>
+    <linearGradient id="focusGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#22D3EE" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#22D3EE" />
+    </linearGradient>
+  </defs>
+
+  <!-- External Focus brackets/ring -->
+  <g stroke="url(#focusGrad)" stroke-width="20" fill="none" stroke-linecap="round">
+    <!-- Top-Left Bracket -->
+    <path d="M 140 190 A 130 130 0 0 1 190 140" />
+    <!-- Top-Right Bracket -->
+    <path d="M 322 140 A 130 130 0 0 1 372 190" />
+    <!-- Bottom-Right Bracket -->
+    <path d="M 372 322 A 130 130 0 0 1 322 372" />
+    <!-- Bottom-Left Bracket -->
+    <path d="M 190 372 A 130 130 0 0 1 140 322" />
+  </g>
+
+  <!-- Central Focus Ring -->
+  <circle cx="256" cy="256" r="100" stroke="#18181B" stroke-width="8" fill="none" />
+  <circle cx="256" cy="256" r="100" stroke="url(#accentGrad)" stroke-width="12" fill="none" stroke-dasharray="10 20" />
+
+  <!-- Stylized Geometric "F" in the center -->
+  <g fill="url(#focusGrad)">
+    <!-- Vertical stem -->
+    <rect x="200" y="180" width="32" height="152" rx="10" />
+    <!-- Top horizontal arm -->
+    <rect x="232" y="180" width="80" height="32" rx="10" />
+    <!-- Middle horizontal arm -->
+    <rect x="232" y="240" width="56" height="32" rx="10" />
+  </g>
+</svg>
