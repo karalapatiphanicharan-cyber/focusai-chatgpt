@@ -1,4 +1,4 @@
-/* Polished Premium Dark-Theme Stylesheet for FocusAI (Phase -1.1) */
+/* Polished Premium Dark-Theme Stylesheet for FocusAI Popup */
 
 body {
   margin: 0;
@@ -12,7 +12,7 @@ body {
 }
 
 .container {
-  padding: 18px;
+  padding: 16px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -21,19 +21,18 @@ body {
 .header {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .logo-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .logo-img {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
 }
 
@@ -44,45 +43,40 @@ body {
 }
 
 .logo {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
   color: #FAFAFA;
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .badge {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
   color: #6366F1;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 2px;
+  letter-spacing: 0.04em;
+  margin-top: 1px;
 }
 
 .tagline {
   font-size: 11px;
   color: #A1A1AA;
-  margin: 0;
-  line-height: 1.45;
+  margin: 10px 0 0 0;
+  line-height: 1.4;
 }
 
 .divider {
   border: 0;
   height: 1px;
   background-color: #18181B;
-  margin: 14px 0;
+  margin: 12px 0;
 }
 
 .main-content {
-  margin: 2px 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.spacer {
-  height: 0px;
 }
 
 .status-card {
@@ -92,7 +86,7 @@ body {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
@@ -214,28 +208,27 @@ input:disabled + .slider:before {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: 2px;
 }
 
 .action-btn {
   background-color: #6366F1; /* Primary brand color (#6366F1) */
   color: #FAFAFA;
   border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  font-size: 12px;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.25s ease, transform 0.15s ease;
+  transition: background-color 0.15s ease, transform 0.1s ease;
   width: 100%;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
   font-family: inherit;
 }
 
 .action-btn:hover {
   background-color: #4F46E5; /* Slightly darker violet */
-  transform: translateY(-1px);
+  transform: translateY(-0.5px);
 }
 
 .action-btn:active {
@@ -243,38 +236,41 @@ input:disabled + .slider:before {
   transform: translateY(0);
 }
 
-.footer {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.action-btn:focus, .usage-nav-btn:focus, .back-btn:focus {
+  outline: 1.5px solid #6366F1;
+  outline-offset: 1px;
 }
 
-.footer-title {
+.usage-nav-btn {
+  background: none;
+  border: none;
+  color: #6366F1;
   font-size: 11px;
-  font-weight: 700;
-  color: #6366F1; /* Primary color */
-  margin: 0;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  font-family: inherit;
+  transition: color 0.15s ease, opacity 0.15s ease;
 }
 
-.footer-subtitle {
-  font-size: 9px;
-  color: #A1A1AA;
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.usage-link {
-  transition: color 0.15s ease;
-}
-.usage-link:hover {
+.usage-nav-btn:hover {
   color: #FAFAFA !important;
+  opacity: 0.95;
 }
 
 .back-btn {
   transition: color 0.15s ease;
 }
+
 .back-btn:hover {
   color: #FAFAFA !important;
+}
+
+.shortcut-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  margin-top: 14px;
 }
