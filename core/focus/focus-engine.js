@@ -274,6 +274,28 @@ TABLES
         return { success: false, error: "Critical safety violation. Reverted Focus Mode." };
       }
 
+      // Secondary pass for late-rendered disclaimer and UI elements to prevent any regressions
+      setTimeout(() => {
+        if (document.documentElement.getAttribute('data-focusai-active') === 'true') {
+          const freshElements = this.discoverElements();
+          const lateTargets = [
+            { data: freshElements.disclaimer, key: "disclaimer" },
+            { data: freshElements.sidebar, key: "sidebar" },
+            { data: freshElements.header, key: "header" },
+            { data: freshElements.composer, key: "composer" }
+          ];
+          lateTargets.forEach(target => {
+            const item = target.data;
+            if (item && item.found && item.confidence >= 0.70) {
+              const el = this._resolveElementFromSelector(item.selectorUsed, item.category);
+              if (el) {
+                this._safeHideElement(el, target.key);
+              }
+            }
+          });
+        }
+      }, 3000);
+
       console.log("[FocusAI] Focus Mode successfully enabled!");
       return { success: true, message: "Focus Mode enabled." };
     } catch (e) {

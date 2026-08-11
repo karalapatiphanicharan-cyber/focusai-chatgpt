@@ -158,66 +158,105 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
 
       case types.USAGE_HEARTBEAT:
-        const tabId = sender.tab ? sender.tab.id : null;
-        if (!tabId) {
+        const currentTabId = sender.tab ? sender.tab.id : null;
+        if (!currentTabId) {
           sendResponse({ success: false });
           break;
         }
 
-        Promise.all([
-          self.FocusAI.Storage.get('dailyUsage'),
-          self.FocusAI.Storage.get('trackingSession')
-        ]).then(([dailyUsage, trackingSession]) => {
-          dailyUsage = dailyUsage || {};
-          trackingSession = trackingSession || null;
-
-          const today = self.FocusAI.UsageTracker.getLocalDateString();
-          if (!dailyUsage[today]) {
-            dailyUsage[today] = {
-              startedAt: null,
-              totalActiveSeconds: 0,
-              sessions: 0
-            };
+        // Authoritative browser active/focused checking to have 100% precise accounting
+        chrome.tabs.get(currentTabId, (tab) => {
+          if (chrome.runtime.lastError || !tab || !tab.active) {
+            sendResponse({ success: false });
+            return;
           }
 
-          const now = Date.now();
-          const record = dailyUsage[today];
-
-          // Set startedAt time if it is the first start of today
-          if (record.startedAt === null) {
-            record.startedAt = now;
-          }
-
-          let sessionDelta = 0;
-
-          if (!trackingSession || trackingSession.activeTabId !== tabId || (now - trackingSession.lastHeartbeatTime) > 10000) {
-            // New Session block started (due to tab switch or sleep/pause transition)
-            record.sessions += 1;
-            trackingSession = {
-              activeTabId: tabId,
-              lastHeartbeatTime: now,
-              sessionStartTime: now
-            };
-          } else {
-            // Continuing active session
-            sessionDelta = Math.max(0, Math.floor((now - trackingSession.lastHeartbeatTime) / 1000));
-            // Cap delta to 5 seconds to prevent double/large counting during sleep transitions
-            if (sessionDelta > 5) {
-              sessionDelta = 1;
+          chrome.windows.get(tab.windowId, (win) => {
+            if (chrome.runtime.lastError || !win || !win.focused) {
+              sendResponse({ success: false });
+              return;
             }
-            record.totalActiveSeconds += sessionDelta;
-            trackingSession.lastHeartbeatTime = now;
-          }
 
-          Promise.all([
-            self.FocusAI.Storage.set('dailyUsage', dailyUsage),
-            self.FocusAI.Storage.set('trackingSession', trackingSession)
-          ]).then(() => {
-            sendResponse({ success: true, active: true });
+            Promise.all([
+              self.FocusAI.Storage.get('dailyUsage'),
+              self.FocusAI.Storage.get('trackingSession')
+            ]).then(([dailyUsage, trackingSession]) => {
+              dailyUsage = dailyUsage || {};
+              trackingSession = trackingSession || null;
+
+              const today = self.FocusAI.UsageTracker.getLocalDateString();
+              if (!dailyUsage[today]) {
+                dailyUsage[today] = {
+                  startedAt: null,
+                  totalActiveSeconds: 0,
+                  sessions: 0
+                };
+              }
+
+              const now = Date.now();
+              const record = dailyUsage[today];
+
+              // Record first startedAt time of today
+              if (record.startedAt === null) {
+                record.startedAt = now;
+              }
+
+              if (!trackingSession) {
+                // Brand new session started!
+                record.sessions += 1;
+                trackingSession = {
+                  activeTabId: currentTabId,
+                  lastHeartbeatTime: now,
+                  sessionStartTime: now,
+                  paused: false,
+                  pausedAt: null
+                };
+              } else {
+                if (trackingSession.paused) {
+                  // Resume session cleanly
+                  const pauseDuration = now - trackingSession.pausedAt;
+                  if (pauseDuration > 10000) {
+                    // Swept away for > 10s: treat as a new session block
+                    record.sessions += 1;
+                    trackingSession.sessionStartTime = now;
+                  }
+                  trackingSession.paused = false;
+                  trackingSession.pausedAt = null;
+                  trackingSession.lastHeartbeatTime = now;
+                  trackingSession.activeTabId = currentTabId;
+                } else {
+                  // Switched between ChatGPT Tab A and ChatGPT Tab B
+                  if (trackingSession.activeTabId !== currentTabId) {
+                    if (now - trackingSession.lastHeartbeatTime > 10000) {
+                      record.sessions += 1;
+                      trackingSession.sessionStartTime = now;
+                    }
+                    trackingSession.activeTabId = currentTabId;
+                  }
+
+                  const elapsedMs = now - trackingSession.lastHeartbeatTime;
+                  const sessionDelta = Math.floor(elapsedMs / 1000);
+
+                  if (sessionDelta > 0) {
+                    const cappedDelta = Math.min(5, sessionDelta);
+                    record.totalActiveSeconds += cappedDelta;
+                    // Preserve fractional milliseconds precisely to completely solve quantization error!
+                    trackingSession.lastHeartbeatTime = trackingSession.lastHeartbeatTime + (sessionDelta * 1000);
+                  }
+                }
+              }
+
+              Promise.all([
+                self.FocusAI.Storage.set('dailyUsage', dailyUsage),
+                self.FocusAI.Storage.set('trackingSession', trackingSession)
+              ]).then(() => {
+                sendResponse({ success: true, active: true });
+              });
+            }).catch((err) => {
+              console.error('[FocusAI] Heartbeat tracking error:', err);
+              sendResponse({ success: false });
+            });
           });
-        }).catch((err) => {
-          console.error('[FocusAI] Heartbeat tracking error:', err);
-          sendResponse({ success: false });
         });
         return true;
 
@@ -240,19 +279,68 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// Finalize and pause current session safely
+function pauseCurrentSession() {
+  Promise.all([
+    self.FocusAI.Storage.get('dailyUsage'),
+    self.FocusAI.Storage.get('trackingSession')
+  ]).then(([dailyUsage, trackingSession]) => {
+    if (!trackingSession || trackingSession.paused) return;
+
+    const now = Date.now();
+    const elapsedMs = now - trackingSession.lastHeartbeatTime;
+    const elapsedSec = Math.floor(elapsedMs / 1000);
+
+    dailyUsage = dailyUsage || {};
+    const today = self.FocusAI.UsageTracker.getLocalDateString();
+    if (dailyUsage[today]) {
+      if (elapsedSec > 0 && elapsedSec <= 10) {
+        dailyUsage[today].totalActiveSeconds += elapsedSec;
+      }
+    }
+
+    trackingSession.paused = true;
+    trackingSession.pausedAt = now;
+    trackingSession.lastHeartbeatTime = now;
+
+    Promise.all([
+      self.FocusAI.Storage.set('trackingSession', trackingSession),
+      self.FocusAI.Storage.set('dailyUsage', dailyUsage)
+    ]);
+  }).catch((err) => {
+    console.error('[FocusAI] Error pausing session:', err);
+  });
+}
+
 // Clean up active session state when windows focus out or active tabs switch
-function endCurrentActiveSession() {
-  self.FocusAI.Storage.get('trackingSession').then((trackingSession) => {
-    if (trackingSession) {
-      self.FocusAI.Storage.remove('trackingSession');
+function handleActiveStateChange() {
+  chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+    if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
+      pauseCurrentSession();
+      return;
+    }
+    const activeTab = tabs[0];
+    const url = activeTab.url || "";
+
+    // If focus shifted to popup window, pause accumulation but preserve session!
+    if (url.startsWith('chrome-extension://')) {
+      pauseCurrentSession();
+      return;
+    }
+
+    const isChatGPT = self.FocusAI.Platform.isChatGPTUrl(url);
+    if (!isChatGPT) {
+      pauseCurrentSession();
     }
   });
 }
 
-chrome.tabs.onActivated.addListener(endCurrentActiveSession);
-chrome.tabs.onRemoved.addListener(endCurrentActiveSession);
+chrome.tabs.onActivated.addListener(handleActiveStateChange);
+chrome.tabs.onRemoved.addListener(handleActiveStateChange);
 chrome.windows.onFocusChanged.addListener((windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
-    endCurrentActiveSession();
+    pauseCurrentSession();
+  } else {
+    handleActiveStateChange();
   }
 });
