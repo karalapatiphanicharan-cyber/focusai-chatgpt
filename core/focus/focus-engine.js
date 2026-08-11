@@ -314,8 +314,42 @@ TABLES
     const containsImage = !!el.querySelector('article img, .markdown img, .prose img');
     const containsTable = !!el.querySelector('article table, .markdown table, .prose table');
 
-    // Print HIDE TARGET log
-    console.log(`[FocusAI] HIDE TARGET
+    // DISCLAIMER CANDIDATE LOG
+    if (key === "disclaimer") {
+      const containsProtected = el.querySelector(
+        'article, pre, code, article img, .markdown img, .prose img, article table, .markdown table, .prose table, .react-scroll-to-bottom--css, .conversation-container, [data-role="user"], [data-role="assistant"], [data-testid*="user-message"], [data-testid*="assistant-message"]'
+      );
+      const isComposer = el.tagName === 'FORM' || el.id === 'composer-form' || el.querySelector('#prompt-textarea');
+      const isLarge = el.querySelectorAll('*').length > 15 || (el.getBoundingClientRect().width > window.innerWidth * 0.4 && el.getBoundingClientRect().height > window.innerHeight * 0.4);
+
+      const conversationContainer = document.querySelector('.react-scroll-to-bottom--css, .conversation-container');
+      const isAncestor = conversationContainer && el.contains(conversationContainer);
+
+      const safeToHide = !containsProtected && !isComposer && !isLarge && !isAncestor && !this.isProtected(el);
+
+      console.log(`[FocusAI] Disclaimer candidate found
+
+Element: ${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}
+Tag: ${tag}
+Class: ${className}
+Text: ${textPreview}
+Parent: ${parent}
+Contains protected content: ${containsProtected ? "YES" : "NO"}
+Safe to hide: ${safeToHide ? "YES" : "NO"}`);
+
+      if (!safeToHide) {
+        let reason = "Unsafe ancestor / protected content detected.";
+        if (isComposer) reason = "Target is the composer container.";
+        if (isLarge) reason = "Target is too large.";
+        console.log(`[FocusAI] Disclaimer hide rejected
+
+Reason:
+${reason}`);
+        return false;
+      }
+    } else {
+      // Print HIDE TARGET log for standard elements
+      console.log(`[FocusAI] HIDE TARGET
 
 Category: ${category}
 Tag: ${tag}
@@ -331,6 +365,7 @@ Contains assistant response: ${containsAssistantResponse ? "YES" : "NO"}
 Contains code: ${containsCode ? "YES" : "NO"}
 Contains image: ${containsImage ? "YES" : "NO"}
 Contains table: ${containsTable ? "YES" : "NO"}`);
+    }
 
     // Safety checks
     if (this.isProtected(el)) {
@@ -359,6 +394,11 @@ Target contains protected learning content.`);
 
     // Apply hiding
     el.style.display = 'none';
+
+    if (key === "disclaimer") {
+      console.log("[FocusAI] Disclaimer hidden");
+    }
+
     return true;
   },
 
@@ -436,17 +476,17 @@ Target contains protected learning content.`);
     panel.id = 'focusai-floating-panel';
     panel.style.cssText = `
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: 18px;
+      right: 18px;
       z-index: 999999;
-      background-color: #18181B;
-      border: 1px solid #27272A;
-      border-radius: 8px;
-      padding: 12px;
+      background-color: rgba(20, 20, 20, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      backdrop-filter: blur(4px);
+      border-radius: 6px;
+      padding: 6px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      gap: 4px;
       width: 160px;
       box-sizing: border-box;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -457,21 +497,28 @@ Target contains protected learning content.`);
     toggleComposerBtn.id = 'focusai-toggle-composer-btn';
     toggleComposerBtn.textContent = 'Ask New Question';
     toggleComposerBtn.style.cssText = `
-      background-color: #6366F1;
-      color: #FAFAFA;
-      border: none;
-      border-radius: 6px;
-      padding: 8px 12px;
+      background-color: rgba(40, 40, 40, 0.6);
+      color: #D4D4D8;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      height: 32px;
+      padding: 0 8px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       width: 100%;
       text-align: center;
-      transition: background-color 0.2s ease;
+      transition: background-color 0.15s ease, color 0.15s ease;
       font-family: inherit;
     `;
-    toggleComposerBtn.addEventListener('mouseenter', () => toggleComposerBtn.style.backgroundColor = '#4F46E5');
-    toggleComposerBtn.addEventListener('mouseleave', () => toggleComposerBtn.style.backgroundColor = '#6366F1');
+    toggleComposerBtn.addEventListener('mouseenter', () => {
+      toggleComposerBtn.style.backgroundColor = 'rgba(60, 60, 60, 0.8)';
+      toggleComposerBtn.style.color = '#FAFAFA';
+    });
+    toggleComposerBtn.addEventListener('mouseleave', () => {
+      toggleComposerBtn.style.backgroundColor = 'rgba(40, 40, 40, 0.6)';
+      toggleComposerBtn.style.color = '#D4D4D8';
+    });
 
     toggleComposerBtn.addEventListener('click', () => {
       // Find the real composer
@@ -521,19 +568,20 @@ Target contains protected learning content.`);
     exitFocusBtn.style.cssText = `
       background-color: transparent;
       color: #A1A1AA;
-      border: 1px solid #3F3F46;
-      border-radius: 6px;
-      padding: 8px 12px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      height: 32px;
+      padding: 0 8px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       width: 100%;
       text-align: center;
-      transition: background-color 0.2s ease, color 0.2s ease;
+      transition: background-color 0.15s ease, color 0.15s ease;
       font-family: inherit;
     `;
     exitFocusBtn.addEventListener('mouseenter', () => {
-      exitFocusBtn.style.backgroundColor = '#27272A';
+      exitFocusBtn.style.backgroundColor = 'rgba(60, 60, 60, 0.5)';
       exitFocusBtn.style.color = '#FAFAFA';
     });
     exitFocusBtn.addEventListener('mouseleave', () => {
@@ -551,7 +599,7 @@ Target contains protected learning content.`);
         if (types) {
           chrome.runtime.sendMessage({
             type: types.SET_FOCUS_STATE,
-            payload: { enabled: false }
+            payload: { PharmacistIsHere: true, enabled: false }
           }, (response) => {
             if (chrome.runtime.lastError) {
               console.warn('[FocusAI] Exit focus sync message failed:', chrome.runtime.lastError.message);
