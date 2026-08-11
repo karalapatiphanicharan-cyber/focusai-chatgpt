@@ -36,6 +36,8 @@ However, your actual study content is fully preserved. The following elements al
 - Standard ChatGPT response utilities (copy, thumbs up/down, regenerate, etc.)
 
 ![Focus Mode Study Workspace](docs/screenshots/chatgpt-ui.png)
+
+
 *Focus Mode creates a clean study workspace while keeping the conversation and learning content visible.*
 
 ---
@@ -59,6 +61,8 @@ FocusAI does not create any fake input boxes or alter prompt transmission. You c
 FocusAI provides a simple weekly view showing when ChatGPT was first opened on each day of the week.
 
 ![Weekly Usage View](docs/screenshots/focus-ai-chatgpt-sessions.png)
+
+
 
 The usage view dynamically operates on a **Sunday → Saturday** weekly interval:
 - It records and displays the exact timestamp of the **first time** you opened ChatGPT on each day of the current week.
@@ -85,6 +89,10 @@ This shortcut operates contextually and will not activate Focus Mode on unrelate
 The FocusAI popup dynamically adapts based on whether the active tab is a supported ChatGPT page.
 
 ![FocusAI Extension Popup](docs/screenshots/chatgpt-focus-ai-popup.png)
+
+
+
+
 *FocusAI popup with ChatGPT detection, Focus Mode control, Usage access, and keyboard shortcut information.*
 
 - **When ChatGPT is detected**:
@@ -246,14 +254,20 @@ FocusAI is designed with a strict, local-first architectural approach:
 
 ### 1. Distraction-Free Study Workspace
 ![Focus Mode Active](docs/screenshots/chatgpt-ui.png)
+
+
 *A clutter-free reading pane maximizing screen space, keeping responses, images, code, and chat utilities accessible while floating study controls sit in the bottom right.*
 
 ### 2. Live Tab Detection & Toggles
 ![Popup Active UI](docs/screenshots/chatgpt-focus-ai-popup.png)
+
+
 *The modern extension popup displaying the active tab's 'Detected' status, a clean toggle switch, and a reminder of the global Ctrl+Shift+F keyboard shortcut.*
 
 ### 3. Weekly Learning Activity
 ![Weekly Start Times](docs/screenshots/focus-ai-chatgpt-sessions.png)
+
+
 *The elegant dashboard showing exactly when you initiated your daily studies on ChatGPT throughout the current week.*
 
 ---
