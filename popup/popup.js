@@ -177,25 +177,33 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateUsageMetrics() {
     if (!chrome.runtime || !chrome.runtime.sendMessage) return;
 
-    // Request usage data
-    chrome.runtime.sendMessage({ type: types.GET_USAGE_DATA }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.error('Error fetching usage data:', chrome.runtime.lastError.message);
-        return;
-      }
-
+    // Request usage data and stored session values in parallel
+    Promise.all([
+      new Promise(r => chrome.runtime.sendMessage({ type: types.GET_USAGE_DATA }, r)),
+      new Promise(r => {
+        if (chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get('trackingSession', r);
+        } else {
+          r(null);
+        }
+      })
+    ]).then(([response, stored]) => {
       if (response && response.success) {
-        usageStartedText.textContent = formatLocalTime(response.startedAt);
-        usageUsedText.textContent = formatActiveTime(response.totalActiveSeconds);
-        usageSessionsText.textContent = response.sessions || 0;
-      }
-    });
-
-    // Request active status from trackingSession storage
-    if (chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get('trackingSession', (stored) => {
+        let totalActiveSeconds = response.totalActiveSeconds || 0;
         const session = stored ? stored.trackingSession : null;
         const isActive = session && (Date.now() - session.lastHeartbeatTime < 4000);
+
+        if (isActive && session.lastHeartbeatTime) {
+          const liveDelta = Math.floor((Date.now() - session.lastHeartbeatTime) / 1000);
+          if (liveDelta > 0) {
+            totalActiveSeconds += liveDelta;
+          }
+        }
+
+        usageStartedText.textContent = formatLocalTime(response.startedAt);
+        usageUsedText.textContent = formatActiveTime(totalActiveSeconds);
+        usageSessionsText.textContent = response.sessions || 0;
+
         if (isActive) {
           usageStatusBadge.className = 'status-value active';
           usageStatusBadge.textContent = 'ACTIVE';
@@ -203,8 +211,10 @@ document.addEventListener('DOMContentLoaded', () => {
           usageStatusBadge.className = 'status-value inactive';
           usageStatusBadge.textContent = 'PAUSED';
         }
-      });
-    }
+      }
+    }).catch((err) => {
+      console.error('[FocusAI] Error during metrics update:', err);
+    });
 
     // Update next reset calculation
     const now = new Date();
