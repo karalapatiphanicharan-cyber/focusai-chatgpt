@@ -287,6 +287,80 @@
     // Initial check
     checkVisibilityAndReport();
 
+    // -------------------------------------------------------------------------
+    // USER PROMPT SUBMISSION DETECTION (PHASE -4)
+    // -------------------------------------------------------------------------
+    let userSubmittedPrompt = false;
+    let submitTimeout = null;
+
+    // Intent detectors for user submits
+    document.addEventListener('click', (e) => {
+      const sendBtn = e.target.closest('button[data-testid*="send-button"], button[aria-label*="Send"], [class*="send"]');
+      if (sendBtn) {
+        userSubmittedPrompt = true;
+        if (submitTimeout) clearTimeout(submitTimeout);
+        submitTimeout = setTimeout(() => { userSubmittedPrompt = false; }, 8000);
+      }
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        const textarea = e.target.closest('#prompt-textarea, textarea');
+        if (textarea) {
+          userSubmittedPrompt = true;
+          if (submitTimeout) clearTimeout(submitTimeout);
+          submitTimeout = setTimeout(() => { userSubmittedPrompt = false; }, 8000);
+        }
+      }
+    }, true);
+
+    function scanAndMarkUserMessages() {
+      const userMessages = document.querySelectorAll(
+        'article[data-role="user"], article[data-testid*="user-message"], [data-role="user"]'
+      );
+      userMessages.forEach(el => {
+        if (!el.getAttribute('data-focusai-processed')) {
+          el.setAttribute('data-focusai-processed', 'true');
+          if (userSubmittedPrompt) {
+            // Newly submitted prompt confirmed!
+            userSubmittedPrompt = false;
+            if (submitTimeout) clearTimeout(submitTimeout);
+            reportNewUserPrompt();
+          }
+        }
+      });
+    }
+
+    function reportNewUserPrompt() {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          type: "INCREMENT_PROMPT"
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            // Ignore channel errors
+          }
+        });
+      }
+    }
+
+    // Initial mark of any current historical user messages
+    scanAndMarkUserMessages();
+
+    // Set up MutationObserver to capture user prompt additions dynamically
+    const promptObserver = new MutationObserver(() => {
+      scanAndMarkUserMessages();
+    });
+    promptObserver.observe(document.body, { childList: true, subtree: true });
+
+    // Detect chat/URL navigations to refresh initial markings cleanly
+    let lastUrl = window.location.href;
+    setInterval(() => {
+      if (window.location.href !== lastUrl) {
+        lastUrl = window.location.href;
+        scanAndMarkUserMessages();
+      }
+    }, 500);
+
   } else {
     console.warn('[FocusAI] chrome.runtime messaging API is not available in this context.');
   }
