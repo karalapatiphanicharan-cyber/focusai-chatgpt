@@ -18,11 +18,6 @@
     isContextInvalidated = true;
 
     console.log('[FocusAI] Extension context invalidated; stopping old content-script communication.');
-
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-    }
   }
 
   function safeSendMessage(message, callback) {

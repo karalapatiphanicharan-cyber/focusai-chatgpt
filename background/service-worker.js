@@ -187,3 +187,42 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
     handleActiveStateChange();
   }
 });
+
+// Clean up obsolete keys from previous versions on installation or update
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[FocusAI] Service Worker: onInstalled triggered.');
+
+  const obsoleteKeys = [
+    'screenTime',
+    'usedSeconds',
+    'totalScreenTime',
+    'activeSince',
+    'sessionCount',
+    'promptCount',
+    'usageTimer',
+    'usageInterval',
+    'nextReset'
+  ];
+
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(null, (result) => {
+      if (chrome.runtime.lastError) {
+        console.error('[FocusAI] Error reading storage for cleanup:', chrome.runtime.lastError.message);
+        return;
+      }
+
+      const keysToRemove = obsoleteKeys.filter(key => result[key] !== undefined && result[key] !== null);
+      if (keysToRemove.length > 0) {
+        chrome.storage.local.remove(keysToRemove, () => {
+          if (chrome.runtime.lastError) {
+            console.error('[FocusAI] Error removing obsolete keys:', chrome.runtime.lastError.message);
+          } else {
+            console.log('[FocusAI] Successfully removed obsolete storage keys:', keysToRemove);
+          }
+        });
+      } else {
+        console.log('[FocusAI] Storage is clean. No obsolete keys found.');
+      }
+    });
+  }
+});
