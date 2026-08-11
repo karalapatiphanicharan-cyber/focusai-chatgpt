@@ -22,6 +22,112 @@ self.FocusAI.FocusEngine = {
   },
 
   /**
+   * Conservative protected-content check
+   */
+  isProtected: function(el) {
+    if (!el || !(el instanceof HTMLElement)) return true;
+
+    const tagName = el.tagName.toUpperCase();
+
+    // 1. Structural Exclusions: main content root, documents, sections, articles, tables, pre, images, codes
+    if (
+      tagName === "HTML" ||
+      tagName === "BODY" ||
+      tagName === "MAIN" ||
+      tagName === "ARTICLE" ||
+      tagName === "SECTION" ||
+      tagName === "PRE" ||
+      tagName === "CODE" ||
+      tagName === "TABLE" ||
+      tagName === "IMG"
+    ) {
+      return true;
+    }
+
+    if (
+      el.id === "root" ||
+      el.id === "app" ||
+      el.classList.contains("main-panel") ||
+      el.classList.contains("markdown") ||
+      el.classList.contains("prose") ||
+      el.classList.contains("react-scroll-to-bottom--css") ||
+      el.classList.contains("conversation-container")
+    ) {
+      return true;
+    }
+
+    // 2. Ancestor Check: Do NOT hide if element is an ancestor of the conversation
+    const conversationContainer = document.querySelector(
+      '.react-scroll-to-bottom--css, .conversation-container, [data-role="user"], [data-role="assistant"], [data-testid*="user-message"], [data-testid*="assistant-message"]'
+    );
+    if (conversationContainer && el.contains(conversationContainer)) {
+      return true;
+    }
+
+    // 3. Descendant Check: Do NOT hide if element is nested inside the active conversation
+    if (conversationContainer && conversationContainer.contains(el)) {
+      return true;
+    }
+
+    // 4. Content Check: Do NOT hide if element contains protected content
+    const containsProtected = el.querySelector(
+      'article, pre, code, article img, .markdown img, .prose img, article table, .markdown table, .prose table, .react-scroll-to-bottom--css, .conversation-container, [data-role="user"], [data-role="assistant"], [data-testid*="user-message"], [data-testid*="assistant-message"]'
+    );
+    if (containsProtected) {
+      return true;
+    }
+
+    // 5. Response Action Buttons protections (Copy, Thumbs Up/Down, Regenerate, Share)
+    const containsResponseActionButtons = el.querySelector(
+      'article button[aria-label*="Copy" i], article button[aria-label*="response" i], article button[aria-label*="Regenerate" i], .message-actions-toolbar, [class*="thumbs"], [aria-label*="Thumbs"]'
+    );
+    if (containsResponseActionButtons) {
+      return true;
+    }
+
+    const isResponseButton =
+      tagName === 'BUTTON' && (
+        el.getAttribute('aria-label')?.match(/Copy|response|Regenerate|Thumbs/i) ||
+        el.className.includes('thumbs') ||
+        el.closest('.message-actions-toolbar')
+      );
+    if (isResponseButton) {
+      return true;
+    }
+
+    // 6. Large Container Safety Rules
+    const rect = el.getBoundingClientRect();
+    const descendantsCount = el.querySelectorAll('*').length;
+    if (descendantsCount > 50) {
+      return true;
+    }
+    if (rect.width > window.innerWidth * 0.4 && rect.height > window.innerHeight * 0.4) {
+      return true;
+    }
+
+    return false;
+  },
+
+  /**
+   * Emergency safety mechanism checks if any protected area has been hidden
+   */
+  _verifyNoSafetyViolation: function() {
+    const protectedElements = document.querySelectorAll(
+      '.react-scroll-to-bottom--css, .conversation-container, article, pre, code, table, article img'
+    );
+    for (const el of protectedElements) {
+      if (
+        el.getAttribute('data-focusai-hidden') === 'true' ||
+        el.style.display === 'none' ||
+        el.style.visibility === 'hidden'
+      ) {
+        return false;
+      }
+    }
+    return true;
+  },
+
+  /**
    * Enables Focus Mode on the page (Phase -3).
    * Safely hides non-content elements reversibly while keeping the conversation fully visible.
    * @returns {Object} A result structure indicating success/failure.
@@ -51,6 +157,13 @@ self.FocusAI.FocusEngine = {
         { data: elements.composer, key: "composer" }
       ];
 
+      const activationStatus = {
+        sidebar: "skipped",
+        header: "skipped",
+        disclaimer: "skipped",
+        composer: "skipped"
+      };
+
       hideTargets.forEach(target => {
         const item = target.data;
         // Check confidence threshold (>= 0.70 to handle disclaimer)
@@ -58,13 +171,71 @@ self.FocusAI.FocusEngine = {
           // Resolve the actual element from DOM
           const el = this._resolveElementFromSelector(item.selectorUsed, item.category);
           if (el) {
-            this._safeHideElement(el, target.key);
+            const success = this._safeHideElement(el, target.key);
+            if (success) {
+              if (target.key === "sidebar") activationStatus.sidebar = "hidden";
+              if (target.key === "header" || target.key === "headerActions") activationStatus.header = "hidden";
+              if (target.key === "disclaimer") activationStatus.disclaimer = "hidden";
+              if (target.key === "composer") activationStatus.composer = "hidden";
+            }
           }
         }
       });
 
       // 3. Create and inject the floating FocusAI controls in the bottom-right
       this._injectFloatingControls();
+
+      // Print activation log
+      console.log(`========================================
+FocusAI — Focus Mode Activation
+========================================
+
+SAFE HIDE TARGETS:
+
+SIDEBAR
+✓ ${activationStatus.sidebar}
+
+HEADER
+✓ ${activationStatus.header}
+
+DISCLAIMER
+✓ ${activationStatus.disclaimer}
+
+COMPOSER
+✓ ${activationStatus.composer}
+
+PROTECTED TARGETS:
+
+CONVERSATION
+✓ untouched
+
+USER MESSAGES
+✓ untouched
+
+ASSISTANT RESPONSES
+✓ untouched
+
+MESSAGE ACTIONS
+✓ untouched
+
+CODE
+✓ untouched
+
+IMAGES
+✓ untouched
+
+TABLES
+✓ untouched
+
+========================================`);
+
+      // 4. Emergency Restore Safety Net Check
+      const isClean = this._verifyNoSafetyViolation();
+      if (!isClean) {
+        console.log("[FocusAI] CRITICAL SAFETY VIOLATION");
+        this.disableFocusMode();
+        return { success: false, error: "Critical safety violation. Reverted Focus Mode." };
+      }
 
       console.log("[FocusAI] Focus Mode successfully enabled!");
       return { success: true, message: "Focus Mode enabled." };
@@ -121,45 +292,53 @@ self.FocusAI.FocusEngine = {
    * Safe, reversible element hider with strict content protection
    */
   _safeHideElement: function(el, key) {
-    if (!el) return;
+    if (!el || !(el instanceof HTMLElement)) return false;
 
     // Check if we already have this element stored
     if (el.getAttribute('data-focusai-modified') === 'true') {
-      return;
+      return false;
     }
 
-    // -------------------------------------------------------------------------
-    // CRITICAL BUG FIX: ANCESTOR & DESCENDANT SAFETY CHECK
-    // -------------------------------------------------------------------------
-    // We MUST NEVER hide any element that represents, contains, or is an ancestor
-    // of the conversation, message turns, code blocks, images, tables, or response action buttons.
-    const isProtectedNode =
-      el.tagName === 'BODY' ||
-      el.tagName === 'HTML' ||
-      el.id === 'root' ||
-      el.tagName === 'ARTICLE' ||
-      el.tagName === 'PRE' ||
-      el.tagName === 'CODE' ||
-      el.tagName === 'TABLE' ||
-      el.tagName === 'IMG' ||
-      el.classList.contains('markdown') ||
-      el.classList.contains('prose') ||
-      el.classList.contains('react-scroll-to-bottom--css') ||
-      el.classList.contains('conversation-container');
+    const category = key ? key.toUpperCase() : "UNKNOWN";
+    const tag = el.tagName;
+    const className = el.className || "None";
+    const id = el.id || "None";
+    const role = el.getAttribute('role') || "N/A";
+    const textPreview = el.textContent ? el.textContent.substring(0, 60).replace(/\s+/g, ' ').trim() : "N/A";
+    const parent = el.parentElement ? (el.parentElement.tagName + (el.parentElement.id ? '#' + el.parentElement.id : '')) : "N/A";
 
-    const containsProtectedContent = el.querySelector(
-      'article, pre, code, article img, .markdown img, .prose img, article table, .markdown table, .prose table, .react-scroll-to-bottom--css, .conversation-container, [data-role="user"], [data-role="assistant"], [data-testid*="user-message"], [data-testid*="assistant-message"]'
-    );
+    const containsConversation = !!(el.querySelector('.react-scroll-to-bottom--css, .conversation-container') || el.classList.contains('react-scroll-to-bottom--css') || el.classList.contains('conversation-container'));
+    const containsUserMessage = !!(el.querySelector('[data-role="user"], [data-testid*="user-message"]') || el.getAttribute('data-role') === 'user');
+    const containsAssistantResponse = !!(el.querySelector('[data-role="assistant"], [data-testid*="assistant-message"]') || el.getAttribute('data-role') === 'assistant');
+    const containsCode = !!el.querySelector('pre, code');
+    const containsImage = !!el.querySelector('article img, .markdown img, .prose img');
+    const containsTable = !!el.querySelector('article table, .markdown table, .prose table');
 
-    const containsResponseActionButtons = el.querySelector(
-      'article button[aria-label*="Copy" i], article button[aria-label*="response" i], article button[aria-label*="Regenerate" i], .message-actions-toolbar, [class*="thumbs"], [aria-label*="Thumbs"]'
-    );
+    // Print HIDE TARGET log
+    console.log(`[FocusAI] HIDE TARGET
 
-    if (isProtectedNode || containsProtectedContent || containsResponseActionButtons) {
-      console.warn(`[FocusAI] REFUSED TO HIDE UNSAFE TARGET
-Element: ${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className ? '.' + el.className.split(' ').join('.') : ''}
-Reason: Contains protected learning content or response action buttons.`);
-      return;
+Category: ${category}
+Tag: ${tag}
+Class: ${className}
+ID: ${id}
+Role: ${role}
+Selector: ${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}
+Text preview: ${textPreview}
+Parent: ${parent}
+Contains conversation: ${containsConversation ? "YES" : "NO"}
+Contains user message: ${containsUserMessage ? "YES" : "NO"}
+Contains assistant response: ${containsAssistantResponse ? "YES" : "NO"}
+Contains code: ${containsCode ? "YES" : "NO"}
+Contains image: ${containsImage ? "YES" : "NO"}
+Contains table: ${containsTable ? "YES" : "NO"}`);
+
+    // Safety checks
+    if (this.isProtected(el)) {
+      console.log(`[FocusAI] REFUSED UNSAFE HIDE TARGET
+
+Reason:
+Target contains protected learning content.`);
+      return false;
     }
 
     // Save style states
@@ -180,6 +359,7 @@ Reason: Contains protected learning content or response action buttons.`);
 
     // Apply hiding
     el.style.display = 'none';
+    return true;
   },
 
   /**
