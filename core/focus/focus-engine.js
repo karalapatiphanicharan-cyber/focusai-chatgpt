@@ -22,6 +22,43 @@ self.FocusAI.FocusEngine = {
   },
 
   /**
+   * Helper to locate the leaf-most (smallest) HTML element containing the visible ChatGPT disclaimer text.
+   */
+  _findDisclaimerElement: function() {
+    if (typeof document === 'undefined') return null;
+    const candidates = Array.from(document.querySelectorAll('div, span, p, a, font'));
+    const matches = candidates.filter(el => {
+      const text = el.textContent || "";
+      const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
+      return (
+        normalized.includes("can make mistakes") ||
+        normalized.includes("check important info") ||
+        normalized.includes("check response") ||
+        normalized.includes("pueden cometer") ||
+        normalized.includes("fehler machen") ||
+        normalized.includes("peut se tromper")
+      );
+    });
+
+    const leafMatches = matches.filter(el => {
+      const descendants = Array.from(el.querySelectorAll('div, span, p, a, font'));
+      const hasMatchingDescendant = descendants.some(desc => {
+        const descNormalized = (desc.textContent || "").toLowerCase().replace(/\s+/g, ' ').trim();
+        return (
+          descNormalized.includes("can make mistakes") ||
+          descNormalized.includes("check important info") ||
+          descNormalized.includes("pueden cometer") ||
+          descNormalized.includes("fehler machen") ||
+          descNormalized.includes("peut se tromper")
+        );
+      });
+      return !hasMatchingDescendant;
+    });
+
+    return leafMatches[0] || matches[matches.length - 1] || null;
+  },
+
+  /**
    * Conservative protected-content check
    */
   isProtected: function(el) {
@@ -433,24 +470,14 @@ Target contains protected learning content.`);
    * Resolves the actual live DOM element from its selector used during discovery
    */
   _resolveElementFromSelector: function(selector, category) {
+    if (category === 'DISCLAIMER') {
+      return this._findDisclaimerElement();
+    }
     if (!selector) return null;
 
     // Text matching selector fallback
     if (selector.startsWith('element-containing-text:')) {
-      const allParagraphsAndSpans = Array.from(document.querySelectorAll('p, span, div'));
-      return allParagraphsAndSpans.find(el => {
-        if (el.children.length > 2) return false;
-        if (el.querySelector('form, textarea, nav, header')) return false; // Negative guard
-        const text = (el.textContent || "").toLowerCase();
-        return (
-          text.includes("can make mistakes") ||
-          text.includes("check important info") ||
-          text.includes("check response") ||
-          text.includes("pueden cometer") ||
-          text.includes("fehler machen") ||
-          text.includes("peut se tromper")
-        );
-      });
+      return this._findDisclaimerElement();
     }
 
     // Standard CSS Selector
@@ -482,12 +509,12 @@ Target contains protected learning content.`);
       background-color: rgba(20, 20, 20, 0.75);
       border: 1px solid rgba(255, 255, 255, 0.10);
       backdrop-filter: blur(4px);
-      border-radius: 6px;
-      padding: 6px;
+      border-radius: 8px;
+      padding: 5px;
       display: flex;
       flex-direction: column;
       gap: 4px;
-      width: 160px;
+      width: 150px;
       box-sizing: border-box;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     `;
@@ -500,10 +527,10 @@ Target contains protected learning content.`);
       background-color: rgba(40, 40, 40, 0.6);
       color: #D4D4D8;
       border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
-      height: 32px;
-      padding: 0 8px;
-      font-size: 12px;
+      border-radius: 5px;
+      height: 28px;
+      padding: 4px 8px;
+      font-size: 11px;
       font-weight: 500;
       cursor: pointer;
       width: 100%;
@@ -569,10 +596,10 @@ Target contains protected learning content.`);
       background-color: transparent;
       color: #A1A1AA;
       border: 1px solid transparent;
-      border-radius: 4px;
-      height: 32px;
-      padding: 0 8px;
-      font-size: 12px;
+      border-radius: 5px;
+      height: 28px;
+      padding: 4px 8px;
+      font-size: 11px;
       font-weight: 500;
       cursor: pointer;
       width: 100%;
