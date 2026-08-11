@@ -6,6 +6,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const openChatgptContainer = document.getElementById('open-chatgpt-container');
   const openChatgptBtn = document.getElementById('open-chatgpt-btn');
 
+  // New UI selectors for navigation
+  const mainView = document.getElementById('main-view');
+  const usageView = document.getElementById('usage-view');
+  const usageNavLink = document.getElementById('usage-nav-link');
+  const usageBackBtn = document.getElementById('usage-back-btn');
+
+  // Usage view metrics selectors
+  const usageStartedText = document.getElementById('usage-started-text');
+  const usageUsedText = document.getElementById('usage-used-text');
+  const usageSessionsText = document.getElementById('usage-sessions-text');
+  const usageStatusBadge = document.getElementById('usage-status-badge');
+
+  let usageUpdateInterval = null;
+
   const types = self.FocusAI && self.FocusAI.Messaging && self.FocusAI.Messaging.Types;
   if (!types) {
     console.error('FocusAI Messaging types not found in popup.js');
@@ -104,6 +118,103 @@ document.addEventListener('DOMContentLoaded', () => {
 
   } else {
     console.error('chrome.runtime API is unavailable in this context.');
+  }
+
+  // ---------------------------------------------------------------------------
+  // USAGE VIEW NAVIGATION & LIVE UPDATES (PHASE -4)
+  // ---------------------------------------------------------------------------
+  if (usageNavLink && mainView && usageView) {
+    usageNavLink.addEventListener('click', () => {
+      mainView.style.display = 'none';
+      usageView.style.display = 'block';
+      startUsageLiveUpdates();
+    });
+  }
+
+  if (usageBackBtn && mainView && usageView) {
+    usageBackBtn.addEventListener('click', () => {
+      usageView.style.display = 'none';
+      mainView.style.display = 'block';
+      stopUsageLiveUpdates();
+    });
+  }
+
+  function startUsageLiveUpdates() {
+    updateUsageMetrics();
+    if (usageUpdateInterval) clearInterval(usageUpdateInterval);
+    usageUpdateInterval = setInterval(updateUsageMetrics, 1000); // Poll once per second
+  }
+
+  function stopUsageLiveUpdates() {
+    if (usageUpdateInterval) {
+      clearInterval(usageUpdateInterval);
+      usageUpdateInterval = null;
+    }
+  }
+
+  function formatLocalTime(timestamp) {
+    if (!timestamp) return '--:--';
+    const date = new Date(timestamp);
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    return `${hours}:${minutes} ${ampm}`;
+  }
+
+  function formatActiveTime(seconds) {
+    if (!seconds) return '0m';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      return `${minutes}m`;
+    }
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+  }
+
+  function updateUsageMetrics() {
+    if (!chrome.runtime || !chrome.runtime.sendMessage) return;
+
+    // Request usage data
+    chrome.runtime.sendMessage({ type: types.GET_USAGE_DATA }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('Error fetching usage data:', chrome.runtime.lastError.message);
+        return;
+      }
+
+      if (response && response.success) {
+        usageStartedText.textContent = formatLocalTime(response.startedAt);
+        usageUsedText.textContent = formatActiveTime(response.totalActiveSeconds);
+        usageSessionsText.textContent = response.sessions || 0;
+      }
+    });
+
+    // Request active status from trackingSession storage
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get('trackingSession', (stored) => {
+        const session = stored ? stored.trackingSession : null;
+        const isActive = session && (Date.now() - session.lastHeartbeatTime < 4000);
+        if (isActive) {
+          usageStatusBadge.className = 'status-value active';
+          usageStatusBadge.textContent = 'ACTIVE';
+        } else {
+          usageStatusBadge.className = 'status-value inactive';
+          usageStatusBadge.textContent = 'PAUSED';
+        }
+      });
+    }
+
+    // Update next reset calculation
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0); // local midnight
+    const diffMs = midnight - now;
+    const diffMins = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+    const hrs = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    document.getElementById('usage-reset-text').textContent = `${hrs}h ${mins}m`;
   }
 
   // Helper function to update Focus UI labels cleanly

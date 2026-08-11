@@ -264,3 +264,17 @@ input:disabled + .slider:before {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
+.usage-link {
+  transition: color 0.15s ease;
+}
+.usage-link:hover {
+  color: #FAFAFA !important;
+}
+
+.back-btn {
+  transition: color 0.15s ease;
+}
+.back-btn:hover {
+  color: #FAFAFA !important;
+}

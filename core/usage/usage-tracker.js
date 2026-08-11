@@ -1,87 +1,96 @@
 /**
  * FocusAI - Usage Tracker Module
  * Interface for measuring active ChatGPT session duration.
- *
- * =========================================================================
- * DESIGN PRINCIPLES FOR FUTURE IMPLEMENTATION
- * =========================================================================
- * 1. Active Interval Tracking:
- *    - The tracker MUST NOT simply calculate: currentTime - firstStartedTime
- *      because that incorrectly counts time when ChatGPT is closed or inactive.
- *    - Instead, the implementation will track active intervals during which
- *      the user is actively interacting with the ChatGPT tab.
- *    - Example:
- *      Session 1: 08:42 to 09:25 -> 43 minutes
- *      Session 2: 11:30 to 12:15 -> 45 minutes
- *      Total accumulated usage: 1h 28m (88 minutes)
- *
- * 2. Persistence of Daily Start Time:
- *    - First Started time (e.g., 08:42 AM) must be recorded upon the first
- *      session of the day and must remain the same for that calendar day.
- *    - Reopening ChatGPT must NOT reset or overwrite the daily first-start time.
  */
 
 self.FocusAI = self.FocusAI || {};
 
 self.FocusAI.UsageTracker = {
   /**
-   * Starts a new tracked ChatGPT session.
-   * @returns {Object} A safe response indicating the feature is not implemented.
+   * Gets local date string "YYYY-MM-DD" according to local timezone.
    */
-  startSession: function() {
-    console.log("UsageTracker: startSession called (not implemented in Phase -1)");
-    return {
-      success: false,
-      implemented: false,
-      message: "Usage tracking functionality is not implemented in Phase -1."
-    };
-  },
-
-  /**
-   * Ends the current tracked ChatGPT session.
-   * @returns {Object} A safe response indicating the feature is not implemented.
-   */
-  endSession: function() {
-    console.log("UsageTracker: endSession called (not implemented in Phase -1)");
-    return {
-      success: false,
-      implemented: false,
-      message: "Usage tracking functionality is not implemented in Phase -1."
-    };
+  getLocalDateString: function() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const r = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${r}`;
   },
 
   /**
    * Retrieves today's accumulated active usage.
-   * @returns {Object} A safe response indicating the feature is not implemented.
    */
   getTodayUsage: function() {
-    return {
-      success: false,
-      implemented: false,
-      totalUsageMs: 0
-    };
+    return new Promise((resolve) => {
+      self.FocusAI.Storage.get('dailyUsage')
+        .then((stored) => {
+          let dailyUsage = stored || {};
+          const today = this.getLocalDateString();
+
+          if (!dailyUsage[today]) {
+            dailyUsage[today] = {
+              startedAt: null,
+              totalActiveSeconds: 0,
+              sessions: 0
+            };
+          }
+          resolve({
+            success: true,
+            implemented: true,
+            date: today,
+            startedAt: dailyUsage[today].startedAt,
+            totalActiveSeconds: dailyUsage[today].totalActiveSeconds,
+            sessions: dailyUsage[today].sessions
+          });
+        })
+        .catch((err) => {
+          console.error('[FocusAI] Error loading usage record:', err);
+          resolve({
+            success: false,
+            implemented: false,
+            totalActiveSeconds: 0,
+            sessions: 0,
+            startedAt: null
+          });
+        });
+    });
   },
 
   /**
-   * Retrieves the start timestamp of today's first session.
-   * @returns {Object} A safe response indicating the feature is not implemented.
+   * Dynamic local date reset / check.
    */
-  getTodayStartTime: function() {
-    return {
-      success: false,
-      implemented: false,
-      firstStartedAt: null
-    };
-  },
+  checkAndResetToday: function() {
+    return new Promise((resolve) => {
+      self.FocusAI.Storage.get('dailyUsage')
+        .then((stored) => {
+          let dailyUsage = stored || {};
+          const today = this.getLocalDateString();
+          let modified = false;
 
-  /**
-   * Records a custom session block (Placeholder).
-   * @returns {Object} A safe response indicating the feature is not implemented.
-   */
-  recordSession: function() {
-    return {
-      success: false,
-      implemented: false
-    };
+          if (!dailyUsage[today]) {
+            dailyUsage[today] = {
+              startedAt: null,
+              totalActiveSeconds: 0,
+              sessions: 0
+            };
+            modified = true;
+          }
+
+          if (modified) {
+            self.FocusAI.Storage.set('dailyUsage', dailyUsage)
+              .then(() => resolve(dailyUsage[today]))
+              .catch(() => resolve(dailyUsage[today]));
+          } else {
+            resolve(dailyUsage[today]);
+          }
+        })
+        .catch(() => {
+          resolve({
+            startedAt: null,
+            totalActiveSeconds: 0,
+            sessions: 0
+          });
+        });
+    });
   }
 };
