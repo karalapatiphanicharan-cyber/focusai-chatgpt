@@ -6,19 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const openChatgptContainer = document.getElementById('open-chatgpt-container');
   const openChatgptBtn = document.getElementById('open-chatgpt-btn');
 
-  // New UI selectors for navigation
+  // Navigation transitions (Phase 4.1)
   const mainView = document.getElementById('main-view');
   const usageView = document.getElementById('usage-view');
   const usageNavLink = document.getElementById('usage-nav-link');
   const usageBackBtn = document.getElementById('usage-back-btn');
-
-  // Usage view metrics selectors
-  const usageStartedText = document.getElementById('usage-started-text');
-  const usageUsedText = document.getElementById('usage-used-text');
-  const usageSessionsText = document.getElementById('usage-sessions-text');
-  const usageStatusBadge = document.getElementById('usage-status-badge');
-
-  let usageUpdateInterval = null;
+  const weeklyListContainer = document.getElementById('weekly-list-container');
+  const usageWeekRange = document.getElementById('usage-week-range');
 
   const types = self.FocusAI && self.FocusAI.Messaging && self.FocusAI.Messaging.Types;
   if (!types) {
@@ -31,7 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.runtime.sendMessage({ type: types.GET_PLATFORM_STATUS }, (response) => {
       if (chrome.runtime.lastError) {
         console.error('Error querying platform status:', chrome.runtime.lastError.message);
-        // Fallback or safe handle
         statusIndicator.className = 'status-value not-detected';
         statusIndicator.innerHTML = '<span class="status-dot">○</span> Not detected';
         setToggleInteraction(false);
@@ -68,7 +61,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Listen for changes on the toggle checkbox to set focus state
     focusToggle.addEventListener('change', (e) => {
-      // Extra guard check to ensure no state updates when disabled
       if (focusToggle.disabled) {
         e.preventDefault();
         return;
@@ -81,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }, (response) => {
         if (chrome.runtime.lastError) {
           console.error('Error setting focus state:', chrome.runtime.lastError.message);
-          // Revert checkbox state
           focusToggle.checked = !enabled;
           return;
         }
@@ -89,7 +80,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (response && response.success && response.data) {
           updateFocusUIState(!!response.data.enabled);
         } else {
-          // Revert checkbox state on failure
           focusToggle.checked = !enabled;
           console.error('Failed to update focus state in storage:', response ? response.error : 'Unknown error');
         }
@@ -121,13 +111,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ---------------------------------------------------------------------------
-  // USAGE VIEW NAVIGATION & LIVE UPDATES (PHASE -4)
+  // USAGE VIEW NAVIGATION & DYNAMIC RENDER (PHASE 4.1)
   // ---------------------------------------------------------------------------
   if (usageNavLink && mainView && usageView) {
     usageNavLink.addEventListener('click', () => {
       mainView.style.display = 'none';
       usageView.style.display = 'block';
-      startUsageLiveUpdates();
+      renderUsageView();
     });
   }
 
@@ -135,25 +125,11 @@ document.addEventListener('DOMContentLoaded', () => {
     usageBackBtn.addEventListener('click', () => {
       usageView.style.display = 'none';
       mainView.style.display = 'block';
-      stopUsageLiveUpdates();
     });
   }
 
-  function startUsageLiveUpdates() {
-    updateUsageMetrics();
-    if (usageUpdateInterval) clearInterval(usageUpdateInterval);
-    usageUpdateInterval = setInterval(updateUsageMetrics, 1000); // Poll once per second
-  }
-
-  function stopUsageLiveUpdates() {
-    if (usageUpdateInterval) {
-      clearInterval(usageUpdateInterval);
-      usageUpdateInterval = null;
-    }
-  }
-
   function formatLocalTime(timestamp) {
-    if (!timestamp) return '--:--';
+    if (!timestamp) return '<span style="color: #52525B;">Not opened</span>';
     const date = new Date(timestamp);
     let hours = date.getHours();
     const minutes = String(date.getMinutes()).padStart(2, '0');
@@ -163,68 +139,94 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${hours}:${minutes} ${ampm}`;
   }
 
-  function formatActiveTime(seconds) {
-    if (!seconds) return '0m';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) {
-      return `${minutes}m`;
-    }
-    const hrs = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+  function getLocalDateString(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const r = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${r}`;
   }
 
-  function updateUsageMetrics() {
+  function renderUsageView() {
     if (!chrome.runtime || !chrome.runtime.sendMessage) return;
 
-    // Request usage data and stored session values in parallel
-    Promise.all([
-      new Promise(r => chrome.runtime.sendMessage({ type: types.GET_USAGE_DATA }, r)),
-      new Promise(r => {
-        if (chrome.storage && chrome.storage.local) {
-          chrome.storage.local.get('trackingSession', r);
-        } else {
-          r(null);
-        }
-      })
-    ]).then(([response, stored]) => {
-      if (response && response.success) {
-        let totalActiveSeconds = response.totalActiveSeconds || 0;
-        const session = stored ? stored.trackingSession : null;
-        const isActive = session && (Date.now() - session.lastHeartbeatTime < 4000);
-
-        if (isActive && session.lastHeartbeatTime) {
-          const liveDelta = Math.floor((Date.now() - session.lastHeartbeatTime) / 1000);
-          if (liveDelta > 0) {
-            totalActiveSeconds += liveDelta;
-          }
-        }
-
-        usageStartedText.textContent = formatLocalTime(response.startedAt);
-        usageUsedText.textContent = formatActiveTime(totalActiveSeconds);
-        usageSessionsText.textContent = response.sessions || 0;
-
-        if (isActive) {
-          usageStatusBadge.className = 'status-value active';
-          usageStatusBadge.textContent = 'ACTIVE';
-        } else {
-          usageStatusBadge.className = 'status-value inactive';
-          usageStatusBadge.textContent = 'PAUSED';
-        }
+    chrome.runtime.sendMessage({ type: types.GET_USAGE_DATA }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('Error fetching usage starts:', chrome.runtime.lastError.message);
+        return;
       }
-    }).catch((err) => {
-      console.error('[FocusAI] Error during metrics update:', err);
-    });
 
-    // Update next reset calculation
-    const now = new Date();
-    const midnight = new Date();
-    midnight.setHours(24, 0, 0, 0); // local midnight
-    const diffMs = midnight - now;
-    const diffMins = Math.max(0, Math.floor(diffMs / (1000 * 60)));
-    const hrs = Math.floor(diffMins / 60);
-    const mins = diffMins % 60;
-    document.getElementById('usage-reset-text').textContent = `${hrs}h ${mins}m`;
+      if (response && response.success && response.data) {
+        const weeklyData = response.data;
+        usageWeekRange.textContent = weeklyData.range;
+
+        // Days of week short names
+        const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+        const todayStr = getLocalDateString(new Date());
+
+        weeklyListContainer.innerHTML = '';
+
+        weeklyData.days.forEach(day => {
+          const row = document.createElement('div');
+          const isToday = day.key === todayStr;
+
+          // Apply row level styling inline
+          row.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #18181B;
+            border: 1px solid ${isToday ? '#6366F1' : '#27272A'};
+            border-radius: 6px;
+            padding: 10px 12px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+          `;
+
+          // Day label column (with TODAY sub-badge if applicable)
+          const dayLabelCol = document.createElement('div');
+          dayLabelCol.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+          `;
+
+          const dayLabel = document.createElement('span');
+          dayLabel.textContent = dayNames[day.dayIndex];
+          dayLabel.style.cssText = `
+            font-size: 10px;
+            font-weight: 700;
+            color: ${isToday ? '#6366F1' : '#A1A1AA'};
+            letter-spacing: 0.05em;
+          `;
+          dayLabelCol.appendChild(dayLabel);
+
+          if (isToday) {
+            const todayBadge = document.createElement('span');
+            todayBadge.textContent = 'TODAY';
+            todayBadge.style.cssText = `
+              font-size: 8px;
+              font-weight: 700;
+              color: #6366F1;
+              letter-spacing: 0.02em;
+              margin-top: 1px;
+            `;
+            dayLabelCol.appendChild(todayBadge);
+          }
+
+          // First open time column
+          const timeCol = document.createElement('span');
+          timeCol.innerHTML = formatLocalTime(day.timestamp);
+          timeCol.style.cssText = `
+            font-size: 12px;
+            font-weight: 600;
+            color: ${day.timestamp ? '#FAFAFA' : '#52525B'};
+          `;
+
+          row.appendChild(dayLabelCol);
+          row.appendChild(timeCol);
+          weeklyListContainer.appendChild(row);
+        });
+      }
+    });
   }
 
   // Helper function to update Focus UI labels cleanly

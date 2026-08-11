@@ -16,9 +16,6 @@ console.log('FocusAI service worker started');
 
 // Helper function to broadcast state change to active ChatGPT tabs
 function broadcastFocusStateChange(enabled) {
-  // Query all tabs and attempt message sending to every tab.
-  // This completely bypasses MV3 tab.url undefined limitations under activeTab permission restrictions,
-  // while ensuring any inactive mock tabs in testing also receive the state change correctly.
   chrome.tabs.query({}, (tabs) => {
     if (chrome.runtime.lastError) {
       console.error('Error querying tabs during broadcast:', chrome.runtime.lastError.message);
@@ -30,7 +27,6 @@ function broadcastFocusStateChange(enabled) {
         type: types.FOCUS_STATE_CHANGED,
         payload: { enabled: enabled }
       }, (response) => {
-        // Safe check for runtime errors (e.g. if the tab is not a ChatGPT tab or has no content script)
         if (chrome.runtime.lastError) {
           console.debug(`Safe ignored broadcast error for tab ${tab.id}: ${chrome.runtime.lastError.message}`);
         } else {
@@ -41,7 +37,7 @@ function broadcastFocusStateChange(enabled) {
   });
 }
 
-// Listen for messages from popup or content scripts to handle the message contracts
+// Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const types = self.FocusAI.Messaging.Types;
 
@@ -53,7 +49,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Handle messages safely
   try {
     switch (message.type) {
       case types.PING:
@@ -64,7 +59,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
 
       case types.GET_PLATFORM_STATUS:
-        // Get the active tab in the last focused window to evaluate status
         chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
           if (chrome.runtime.lastError) {
             sendResponse({
@@ -119,7 +113,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const newEnabled = message.payload.enabled;
         self.FocusAI.Storage.set('focusEnabled', newEnabled)
           .then(() => {
-            // Broadcast state change to all active ChatGPT tabs
             broadcastFocusStateChange(newEnabled);
 
             sendResponse({
@@ -139,44 +132,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         return true;
 
-      case types.GET_SETTINGS:
-      case types.SET_SETTINGS:
-        sendResponse({
-          success: false,
-          error: "Settings management is not implemented in Phase -3."
-        });
-        break;
-
       case types.GET_USAGE_DATA:
-        self.FocusAI.UsageTracker.getTodayUsage()
-          .then((usage) => {
-            sendResponse(usage);
+        self.FocusAI.UsageTracker.getWeeklyStarts()
+          .then((weeklyStarts) => {
+            sendResponse({ success: true, data: weeklyStarts });
           })
           .catch((err) => {
             sendResponse({ success: false, error: err.message });
           });
-        return true;
-
-      case types.INCREMENT_PROMPT:
-        self.FocusAI.Storage.get('dailyUsage').then((dailyUsage) => {
-          dailyUsage = dailyUsage || {};
-          const today = self.FocusAI.UsageTracker.getLocalDateString();
-          if (!dailyUsage[today]) {
-            dailyUsage[today] = {
-              startedAt: null,
-              totalScreenTimeSeconds: 0,
-              promptCount: 0
-            };
-          }
-          dailyUsage[today].promptCount = (dailyUsage[today].promptCount || 0) + 1;
-
-          self.FocusAI.Storage.set('dailyUsage', dailyUsage).then(() => {
-            sendResponse({ success: true, count: dailyUsage[today].promptCount });
-          });
-        }).catch((err) => {
-          console.error('[FocusAI] Error incrementing prompt:', err);
-          sendResponse({ success: false });
-        });
         return true;
 
       case types.USAGE_HEARTBEAT:
@@ -199,78 +162,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               return;
             }
 
-            Promise.all([
-              self.FocusAI.Storage.get('dailyUsage'),
-              self.FocusAI.Storage.get('trackingSession')
-            ]).then(([dailyUsage, trackingSession]) => {
-              dailyUsage = dailyUsage || {};
-              trackingSession = trackingSession || null;
-
-              const today = self.FocusAI.UsageTracker.getLocalDateString();
-              if (!dailyUsage[today]) {
-                dailyUsage[today] = {
-                  startedAt: null,
-                  totalScreenTimeSeconds: 0,
-                  promptCount: 0
-                };
-              }
-
-              const now = Date.now();
-              const record = dailyUsage[today];
-
-              // Record first startedAt time of today
-              if (record.startedAt === null) {
-                record.startedAt = now;
-              }
-
-              if (!trackingSession) {
-                // Brand new screen time session started!
-                trackingSession = {
-                  activeTabId: currentTabId,
-                  lastHeartbeatTime: now,
-                  sessionStartTime: now,
-                  paused: false,
-                  pausedAt: null
-                };
-              } else {
-                if (trackingSession.paused) {
-                  // Resume session cleanly
-                  const pauseDuration = now - trackingSession.pausedAt;
-                  if (pauseDuration > 10000) {
-                    trackingSession.sessionStartTime = now;
-                  }
-                  trackingSession.paused = false;
-                  trackingSession.pausedAt = null;
-                  trackingSession.lastHeartbeatTime = now;
-                  trackingSession.activeTabId = currentTabId;
-                } else {
-                  // Switched between ChatGPT Tab A and ChatGPT Tab B
-                  if (trackingSession.activeTabId !== currentTabId) {
-                    trackingSession.activeTabId = currentTabId;
-                  }
-
-                  const elapsedMs = now - trackingSession.lastHeartbeatTime;
-                  const sessionDelta = Math.floor(elapsedMs / 1000);
-
-                  if (sessionDelta > 0) {
-                    const cappedDelta = Math.min(5, sessionDelta);
-                    record.totalScreenTimeSeconds += cappedDelta;
-                    // Preserve fractional milliseconds precisely to completely solve quantization error!
-                    trackingSession.lastHeartbeatTime = trackingSession.lastHeartbeatTime + (sessionDelta * 1000);
-                  }
-                }
-              }
-
-              Promise.all([
-                self.FocusAI.Storage.set('dailyUsage', dailyUsage),
-                self.FocusAI.Storage.set('trackingSession', trackingSession)
-              ]).then(() => {
-                sendResponse({ success: true, active: true });
+            // Only record daily starts on actual ChatGPT activation
+            self.FocusAI.UsageTracker.recordFirstOpenToday()
+              .then((startedAt) => {
+                sendResponse({ success: true, startedAt: startedAt });
+              })
+              .catch((err) => {
+                console.error('[FocusAI] Error recording daily startedAt:', err);
+                sendResponse({ success: false });
               });
-            }).catch((err) => {
-              console.error('[FocusAI] Heartbeat tracking error:', err);
-              sendResponse({ success: false });
-            });
           });
         });
         return true;
@@ -290,72 +190,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   }
 
-  // Keep message channel open for asynchronous responses where applicable
   return true;
 });
-
-// Finalize and pause current session safely
-function pauseCurrentSession() {
-  Promise.all([
-    self.FocusAI.Storage.get('dailyUsage'),
-    self.FocusAI.Storage.get('trackingSession')
-  ]).then(([dailyUsage, trackingSession]) => {
-    if (!trackingSession || trackingSession.paused) return;
-
-    const now = Date.now();
-    const elapsedMs = now - trackingSession.lastHeartbeatTime;
-    const elapsedSec = Math.floor(elapsedMs / 1000);
-
-    dailyUsage = dailyUsage || {};
-    const today = self.FocusAI.UsageTracker.getLocalDateString();
-    if (dailyUsage[today]) {
-      if (elapsedSec > 0 && elapsedSec <= 10) {
-        dailyUsage[today].totalScreenTimeSeconds += elapsedSec;
-      }
-    }
-
-    trackingSession.paused = true;
-    trackingSession.pausedAt = now;
-    trackingSession.lastHeartbeatTime = now;
-
-    Promise.all([
-      self.FocusAI.Storage.set('trackingSession', trackingSession),
-      self.FocusAI.Storage.set('dailyUsage', dailyUsage)
-    ]);
-  }).catch((err) => {
-    console.error('[FocusAI] Error pausing session:', err);
-  });
-}
 
 // Clean up active session state when windows focus out or active tabs switch
 function handleActiveStateChange() {
   chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
     if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
-      pauseCurrentSession();
       return;
     }
     const activeTab = tabs[0];
     const url = activeTab.url || "";
 
-    // If focus shifted to popup window, pause accumulation but preserve session!
     if (url.startsWith('chrome-extension://')) {
-      pauseCurrentSession();
       return;
     }
 
     const isChatGPT = self.FocusAI.Platform.isChatGPTUrl(url);
-    if (!isChatGPT) {
-      pauseCurrentSession();
+    if (isChatGPT) {
+      // Record today's first-open immediately when ChatGPT tab is activated
+      self.FocusAI.UsageTracker.recordFirstOpenToday();
     }
   });
 }
 
 chrome.tabs.onActivated.addListener(handleActiveStateChange);
-chrome.tabs.onRemoved.addListener(handleActiveStateChange);
 chrome.windows.onFocusChanged.addListener((windowId) => {
-  if (windowId === chrome.windows.WINDOW_ID_NONE) {
-    pauseCurrentSession();
-  } else {
+  if (windowId !== chrome.windows.WINDOW_ID_NONE) {
     handleActiveStateChange();
   }
 });

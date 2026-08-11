@@ -1,6 +1,6 @@
 /**
  * FocusAI - Usage Tracker Module
- * Interface for measuring active ChatGPT session duration.
+ * Handles daily first-open time tracking (Phase 4.1).
  */
 
 self.FocusAI = self.FocusAI || {};
@@ -18,78 +18,87 @@ self.FocusAI.UsageTracker = {
   },
 
   /**
-   * Retrieves today's accumulated active usage.
+   * Records first open timestamp for today if not already recorded.
    */
-  getTodayUsage: function() {
+  recordFirstOpenToday: function() {
     return new Promise((resolve) => {
-      self.FocusAI.Storage.get('dailyUsage')
+      self.FocusAI.Storage.get('dailyStarts')
         .then((stored) => {
-          let dailyUsage = stored || {};
+          let dailyStarts = stored || {};
           const today = this.getLocalDateString();
-
-          if (!dailyUsage[today]) {
-            dailyUsage[today] = {
-              startedAt: null,
-              totalScreenTimeSeconds: 0,
-              promptCount: 0
-            };
+          if (!dailyStarts[today]) {
+            dailyStarts[today] = Date.now();
+            self.FocusAI.Storage.set('dailyStarts', dailyStarts)
+              .then(() => {
+                console.log('[FocusAI] First-open time recorded for today:', new Date(dailyStarts[today]).toLocaleTimeString());
+                resolve(dailyStarts[today]);
+              })
+              .catch((err) => {
+                console.error('[FocusAI] Error storing first open:', err);
+                resolve(null);
+              });
+          } else {
+            resolve(dailyStarts[today]);
           }
-          resolve({
-            success: true,
-            implemented: true,
-            date: today,
-            startedAt: dailyUsage[today].startedAt,
-            totalActiveSeconds: dailyUsage[today].totalScreenTimeSeconds,
-            sessions: dailyUsage[today].promptCount
-          });
         })
         .catch((err) => {
-          console.error('[FocusAI] Error loading usage record:', err);
-          resolve({
-            success: false,
-            implemented: false,
-            totalActiveSeconds: 0,
-            sessions: 0,
-            startedAt: null
-          });
+          console.error('[FocusAI] Error reading first open:', err);
+          resolve(null);
         });
     });
   },
 
   /**
-   * Dynamic local date reset / check.
+   * Calculates Sunday to Saturday daily first opens for the current local week.
    */
-  checkAndResetToday: function() {
+  getWeeklyStarts: function() {
     return new Promise((resolve) => {
-      self.FocusAI.Storage.get('dailyUsage')
+      self.FocusAI.Storage.get('dailyStarts')
         .then((stored) => {
-          let dailyUsage = stored || {};
-          const today = this.getLocalDateString();
-          let modified = false;
+          const dailyStarts = stored || {};
+          const now = new Date();
+          const currentDayIndex = now.getDay(); // 0 is Sunday, 6 is Saturday
 
-          if (!dailyUsage[today]) {
-            dailyUsage[today] = {
-              startedAt: null,
-              totalScreenTimeSeconds: 0,
-              promptCount: 0
-            };
-            modified = true;
+          const weekDays = [];
+          // Calculate starting Sunday of the current week
+          const sunday = new Date(now);
+          sunday.setDate(now.getDate() - currentDayIndex);
+
+          for (let i = 0; i < 7; i++) {
+            const day = new Date(sunday);
+            day.setDate(sunday.getDate() + i);
+            const year = day.getFullYear();
+            const month = String(day.getMonth() + 1).padStart(2, '0');
+            const dateStr = String(day.getDate()).padStart(2, '0');
+            const key = `${year}-${month}-${dateStr}`;
+
+            weekDays.push({
+              dayIndex: i, // 0 to 6 (Sun to Sat)
+              key: key,
+              timestamp: dailyStarts[key] || null
+            });
           }
 
-          if (modified) {
-            self.FocusAI.Storage.set('dailyUsage', dailyUsage)
-              .then(() => resolve(dailyUsage[today]))
-              .catch(() => resolve(dailyUsage[today]));
-          } else {
-            resolve(dailyUsage[today]);
-          }
-        })
-        .catch(() => {
+          // Format Week Range (e.g. "Aug 9 — Aug 15" or "Aug 30 — Sep 5")
+          const startDay = new Date(sunday);
+          const endDay = new Date(sunday);
+          endDay.setDate(sunday.getDate() + 6);
+
+          const formatMonthDay = (d) => {
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            return `${months[d.getMonth()]} ${d.getDate()}`;
+          };
+
+          const rangeStr = `${formatMonthDay(startDay)} — ${formatMonthDay(endDay)}`;
+
           resolve({
-            startedAt: null,
-            totalScreenTimeSeconds: 0,
-            promptCount: 0
+            range: rangeStr,
+            days: weekDays
           });
+        })
+        .catch((err) => {
+          console.error('[FocusAI] Error getting weekly starts:', err);
+          resolve({ range: "-- — --", days: [] });
         });
     });
   }
