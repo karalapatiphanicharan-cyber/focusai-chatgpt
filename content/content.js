@@ -278,46 +278,6 @@
       });
     }
 
-    // -------------------------------------------------------------------------
-    // USAGE TRACKING HEARTBEAT (PHASE -4)
-    // -------------------------------------------------------------------------
-    let heartbeatInterval = null;
-
-    function sendHeartbeat() {
-      safeSendMessage({
-        type: "USAGE_HEARTBEAT"
-      });
-    }
-
-    function startHeartbeat() {
-      if (heartbeatInterval) return;
-      sendHeartbeat();
-      heartbeatInterval = setInterval(sendHeartbeat, 1000); // 1-second interval
-    }
-
-    function stopHeartbeat() {
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
-      }
-    }
-
-    function checkVisibilityAndReport() {
-      if (document.visibilityState === 'visible') {
-        startHeartbeat();
-      } else {
-        stopHeartbeat();
-      }
-    }
-
-    // Register active/visibility state listeners
-    document.addEventListener('visibilitychange', checkVisibilityAndReport);
-    window.addEventListener('focus', checkVisibilityAndReport);
-    window.addEventListener('blur', checkVisibilityAndReport);
-
-    // Initial check
-    checkVisibilityAndReport();
-
   } else {
     console.warn('[FocusAI] chrome.runtime messaging API is not available in this context.');
   }
