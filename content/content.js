@@ -39,9 +39,7 @@
     }
 
     // 2. Disconnect observers
-    if (promptObserver) {
-      promptObserver.disconnect();
-    }
+    stopPromptObserver();
 
     // 3. Remove event listeners safely
     try {
@@ -104,6 +102,7 @@
   }
 
   // Helper function to format and print the specified development console report
+  // (Maintained for console metadata requirements)
   function printDiscoveryReport(report) {
     if (!report) return;
 
@@ -394,6 +393,7 @@
     document.addEventListener('keydown', handleUserSubmitKeydown, true);
 
     function scanAndMarkUserMessages() {
+      if (!document.body) return;
       const userMessages = document.querySelectorAll(
         'article[data-role="user"], article[data-testid*="user-message"], [data-role="user"]'
       );
@@ -416,14 +416,77 @@
       });
     }
 
+    // -------------------------------------------------------------------------
+    // MUTATIONOBSERVER INITIALIZATION & LIFECYCLE (PHASE -4 HOTFIX 2)
+    // -------------------------------------------------------------------------
+    let promptObserver = null;
+    let observerRetryCount = 0;
+    const maxObserverRetries = 50; // up to 5 seconds max (50 * 100ms)
+
+    function startPromptObserver() {
+      if (!document.body || !(document.body instanceof Node)) {
+        return false;
+      }
+
+      stopPromptObserver();
+
+      try {
+        promptObserver = new MutationObserver(() => {
+          try {
+            scanAndMarkUserMessages();
+          } catch (error) {
+            console.warn("[FocusAI] Prompt scan failed:", error);
+          }
+        });
+
+        promptObserver.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+        return true;
+      } catch (err) {
+        console.warn("[FocusAI] Failed to start prompt observer:", err);
+        return false;
+      }
+    }
+
+    function stopPromptObserver() {
+      if (promptObserver) {
+        try {
+          promptObserver.disconnect();
+        } catch (err) {
+          // safely ignore cleanup failure
+        }
+        promptObserver = null;
+      }
+    }
+
+    function ensurePromptObserver() {
+      if (document.body) {
+        startPromptObserver();
+        return;
+      }
+
+      const retry = () => {
+        if (isContextInvalidated) return;
+        if (document.body) {
+          startPromptObserver();
+        } else if (observerRetryCount < maxObserverRetries) {
+          observerRetryCount++;
+          setTimeout(retry, 100);
+        } else {
+          console.warn("[FocusAI] MutationObserver initialization timed out: document.body not found.");
+        }
+      };
+
+      retry();
+    }
+
     // Initial mark of any current historical user messages
     scanAndMarkUserMessages();
 
-    // Set up MutationObserver to capture user prompt additions dynamically
-    const promptObserver = new MutationObserver(() => {
-      scanAndMarkUserMessages();
-    });
-    promptObserver.observe(document.body, { childList: true, subtree: true });
+    // Safely wait for document.body ready and initialize prompt observer
+    ensurePromptObserver();
 
     // Detect chat/URL navigations to refresh initial markings cleanly
     let lastUrl = window.location.href;
