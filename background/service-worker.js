@@ -157,6 +157,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         return true;
 
+      case types.INCREMENT_PROMPT:
+        self.FocusAI.Storage.get('dailyUsage').then((dailyUsage) => {
+          dailyUsage = dailyUsage || {};
+          const today = self.FocusAI.UsageTracker.getLocalDateString();
+          if (!dailyUsage[today]) {
+            dailyUsage[today] = {
+              startedAt: null,
+              totalScreenTimeSeconds: 0,
+              promptCount: 0
+            };
+          }
+          dailyUsage[today].promptCount = (dailyUsage[today].promptCount || 0) + 1;
+
+          self.FocusAI.Storage.set('dailyUsage', dailyUsage).then(() => {
+            sendResponse({ success: true, count: dailyUsage[today].promptCount });
+          });
+        }).catch((err) => {
+          console.error('[FocusAI] Error incrementing prompt:', err);
+          sendResponse({ success: false });
+        });
+        return true;
+
       case types.USAGE_HEARTBEAT:
         const currentTabId = sender.tab ? sender.tab.id : null;
         if (!currentTabId) {

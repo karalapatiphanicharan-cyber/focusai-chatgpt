@@ -30,8 +30,8 @@ self.FocusAI.UsageTracker = {
           if (!dailyUsage[today]) {
             dailyUsage[today] = {
               startedAt: null,
-              totalActiveSeconds: 0,
-              sessions: 0
+              totalScreenTimeSeconds: 0,
+              promptCount: 0
             };
           }
           resolve({
@@ -39,8 +39,8 @@ self.FocusAI.UsageTracker = {
             implemented: true,
             date: today,
             startedAt: dailyUsage[today].startedAt,
-            totalActiveSeconds: dailyUsage[today].totalActiveSeconds,
-            sessions: dailyUsage[today].sessions
+            totalActiveSeconds: dailyUsage[today].totalScreenTimeSeconds,
+            sessions: dailyUsage[today].promptCount
           });
         })
         .catch((err) => {
@@ -70,8 +70,8 @@ self.FocusAI.UsageTracker = {
           if (!dailyUsage[today]) {
             dailyUsage[today] = {
               startedAt: null,
-              totalActiveSeconds: 0,
-              sessions: 0
+              totalScreenTimeSeconds: 0,
+              promptCount: 0
             };
             modified = true;
           }
@@ -87,8 +87,8 @@ self.FocusAI.UsageTracker = {
         .catch(() => {
           resolve({
             startedAt: null,
-            totalActiveSeconds: 0,
-            sessions: 0
+            totalScreenTimeSeconds: 0,
+            promptCount: 0
           });
         });
     });
