@@ -147,6 +147,80 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         break;
 
+      case types.GET_USAGE_DATA:
+        self.FocusAI.UsageTracker.getTodayUsage()
+          .then((usage) => {
+            sendResponse(usage);
+          })
+          .catch((err) => {
+            sendResponse({ success: false, error: err.message });
+          });
+        return true;
+
+      case types.USAGE_HEARTBEAT:
+        const tabId = sender.tab ? sender.tab.id : null;
+        if (!tabId) {
+          sendResponse({ success: false });
+          break;
+        }
+
+        Promise.all([
+          self.FocusAI.Storage.get('dailyUsage'),
+          self.FocusAI.Storage.get('trackingSession')
+        ]).then(([dailyUsage, trackingSession]) => {
+          dailyUsage = dailyUsage || {};
+          trackingSession = trackingSession || null;
+
+          const today = self.FocusAI.UsageTracker.getLocalDateString();
+          if (!dailyUsage[today]) {
+            dailyUsage[today] = {
+              startedAt: null,
+              totalActiveSeconds: 0,
+              sessions: 0
+            };
+          }
+
+          const now = Date.now();
+          const record = dailyUsage[today];
+
+          // Set startedAt time if it is the first start of today
+          if (record.startedAt === null) {
+            record.startedAt = now;
+          }
+
+          let sessionDelta = 0;
+
+          if (!trackingSession || trackingSession.activeTabId !== tabId || (now - trackingSession.lastHeartbeatTime) > 10000) {
+            // New Session block started (due to tab switch or sleep/pause transition)
+            record.sessions += 1;
+            trackingSession = {
+              activeTabId: tabId,
+              lastHeartbeatTime: now,
+              sessionStartTime: now
+            };
+          } else {
+            // Continuing active session
+            sessionDelta = Math.max(0, Math.floor((now - trackingSession.lastHeartbeatTime) / 1000));
+            // Cap delta to 5 seconds to prevent double/large counting during sleep transitions
+            if (sessionDelta > 5) {
+              sessionDelta = 1;
+            }
+            record.totalActiveSeconds += sessionDelta;
+            trackingSession.lastHeartbeatTime = now;
+          }
+
+          Promise.all([
+            self.FocusAI.Storage.set('dailyUsage', dailyUsage),
+            self.FocusAI.Storage.set('trackingSession', trackingSession)
+          ]).then(() => {
+            sendResponse({ success: true, active: true });
+          });
+        }).catch((err) => {
+          console.error('[FocusAI] Heartbeat tracking error:', err);
+          sendResponse({ success: false });
+        });
+        return true;
+
       default:
         sendResponse({
           success: false,
@@ -164,4 +238,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Keep message channel open for asynchronous responses where applicable
   return true;
+});
+
+// Clean up active session state when windows focus out or active tabs switch
+function endCurrentActiveSession() {
+  self.FocusAI.Storage.get('trackingSession').then((trackingSession) => {
+    if (trackingSession) {
+      self.FocusAI.Storage.remove('trackingSession');
+    }
+  });
+}
+
+chrome.tabs.onActivated.addListener(endCurrentActiveSession);
+chrome.tabs.onRemoved.addListener(endCurrentActiveSession);
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    endCurrentActiveSession();
+  }
 });
