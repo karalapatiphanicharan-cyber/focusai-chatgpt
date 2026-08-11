@@ -118,13 +118,47 @@ self.FocusAI.FocusEngine = {
   },
 
   /**
-   * Safe, reversible element hider
+   * Safe, reversible element hider with strict content protection
    */
   _safeHideElement: function(el, key) {
     if (!el) return;
 
     // Check if we already have this element stored
     if (el.getAttribute('data-focusai-modified') === 'true') {
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CRITICAL BUG FIX: ANCESTOR & DESCENDANT SAFETY CHECK
+    // -------------------------------------------------------------------------
+    // We MUST NEVER hide any element that represents, contains, or is an ancestor
+    // of the conversation, message turns, code blocks, images, tables, or response action buttons.
+    const isProtectedNode =
+      el.tagName === 'BODY' ||
+      el.tagName === 'HTML' ||
+      el.id === 'root' ||
+      el.tagName === 'ARTICLE' ||
+      el.tagName === 'PRE' ||
+      el.tagName === 'CODE' ||
+      el.tagName === 'TABLE' ||
+      el.tagName === 'IMG' ||
+      el.classList.contains('markdown') ||
+      el.classList.contains('prose') ||
+      el.classList.contains('react-scroll-to-bottom--css') ||
+      el.classList.contains('conversation-container');
+
+    const containsProtectedContent = el.querySelector(
+      'article, pre, code, article img, .markdown img, .prose img, article table, .markdown table, .prose table, .react-scroll-to-bottom--css, .conversation-container, [data-role="user"], [data-role="assistant"], [data-testid*="user-message"], [data-testid*="assistant-message"]'
+    );
+
+    const containsResponseActionButtons = el.querySelector(
+      'article button[aria-label*="Copy" i], article button[aria-label*="response" i], article button[aria-label*="Regenerate" i], .message-actions-toolbar, [class*="thumbs"], [aria-label*="Thumbs"]'
+    );
+
+    if (isProtectedNode || containsProtectedContent || containsResponseActionButtons) {
+      console.warn(`[FocusAI] REFUSED TO HIDE UNSAFE TARGET
+Element: ${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className ? '.' + el.className.split(' ').join('.') : ''}
+Reason: Contains protected learning content or response action buttons.`);
       return;
     }
 
@@ -209,7 +243,7 @@ self.FocusAI.FocusEngine = {
   },
 
   /**
-   * Insets the compact FocusAI floating controls at bottom-right
+   * Injects the compact FocusAI floating controls at bottom-right
    */
   _injectFloatingControls: function() {
     // Prevent duplicated panels
@@ -1001,7 +1035,6 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
-    // Text-based matching on paragraphs, spans, and divs
     const allParagraphsAndSpans = Array.from(document.querySelectorAll('p, span, div'));
     let element = allParagraphsAndSpans.find(el => {
       if (el.children.length > 2) return false;
