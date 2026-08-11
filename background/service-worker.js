@@ -188,6 +188,40 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   }
 });
 
+// Command listener for keyboard shortcuts (toggle-focus-mode)
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'toggle-focus-mode') {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
+        return;
+      }
+      const activeTab = tabs[0];
+      const url = activeTab.url || "";
+
+      // Only toggle Focus Mode when on supported ChatGPT URLs
+      if (self.FocusAI.Platform.isChatGPTUrl(url)) {
+        self.FocusAI.Storage.get('focusEnabled')
+          .then((storedVal) => {
+            const currentEnabled = storedVal !== null ? !!storedVal : false;
+            const newEnabled = !currentEnabled;
+
+            self.FocusAI.Storage.set('focusEnabled', newEnabled)
+              .then(() => {
+                broadcastFocusStateChange(newEnabled);
+                console.log('[FocusAI] Keyboard shortcut toggled Focus Mode to:', newEnabled);
+              })
+              .catch((err) => {
+                console.error('[FocusAI] Error storing focus state from shortcut:', err);
+              });
+          })
+          .catch((err) => {
+            console.error('[FocusAI] Error retrieving focus state from shortcut:', err);
+          });
+      }
+    });
+  }
+});
+
 // Clean up obsolete keys from previous versions on installation or update
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[FocusAI] Service Worker: onInstalled triggered.');

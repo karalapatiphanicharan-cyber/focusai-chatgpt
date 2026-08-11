@@ -1,12 +1,21 @@
 {
   "manifest_version": 3,
   "name": "FocusAI",
-  "version": "0.0.6",
-  "description": "A Chrome extension that transforms ChatGPT into a distraction-free study workspace while tracking daily ChatGPT usage.",
+  "version": "1.0.0",
+  "description": "Turn ChatGPT into a distraction-free study workspace with Focus Mode, fullscreen study tools, and weekly usage tracking.",
   "permissions": [
     "activeTab",
     "storage"
   ],
+  "commands": {
+    "toggle-focus-mode": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
+      },
+      "description": "Toggle Focus Mode"
+    }
+  },
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
