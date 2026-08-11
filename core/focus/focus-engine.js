@@ -179,8 +179,13 @@ self.FocusAI.FocusEngine = {
         return { success: true, message: "Focus Mode already active." };
       }
 
+      this._isModifyingDOM = true;
+
       // Mark Focus Mode active on the document element
       document.documentElement.setAttribute('data-focusai-active', 'true');
+
+      // Initialize MutationObserver
+      this._setupMutationObserver();
 
       // 2. Discover ChatGPT UI elements on the page
       const elements = this.discoverElements();
@@ -218,6 +223,14 @@ self.FocusAI.FocusEngine = {
           }
         }
       });
+
+      // Apply expanded width to the high-confidence conversation element
+      if (elements.conversation && elements.conversation.found && elements.conversation.confidence >= 0.85) {
+        const conversationEl = this._resolveElementFromSelector(elements.conversation.selectorUsed, 'CONVERSATION');
+        if (conversationEl) {
+          this._adjustConversationLayout(conversationEl);
+        }
+      }
 
       // 3. Create and inject the floating FocusAI controls in the bottom-right
       this._injectFloatingControls();
@@ -301,6 +314,8 @@ TABLES
     } catch (e) {
       console.error("[FocusAI] Error enabling Focus Mode:", e);
       return { success: false, error: e.message };
+    } finally {
+      this._isModifyingDOM = false;
     }
   },
 
@@ -313,10 +328,31 @@ TABLES
     console.log("[FocusAI] FocusEngine: disableFocusMode called");
 
     try {
+      this._isModifyingDOM = true;
+
       // 1. Idempotency Check: If already inactive, do nothing
       if (document.documentElement.getAttribute('data-focusai-active') !== 'true') {
         console.log("[FocusAI] Focus Mode is already disabled. Skipping...");
         return { success: true, message: "Focus Mode already inactive." };
+      }
+
+      // Disconnect MutationObserver
+      if (this._observer) {
+        this._observer.disconnect();
+        this._observer = null;
+      }
+
+      // Exit browser fullscreen if active (safely check fullscreenElement)
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(err => {
+          console.debug('[FocusAI] Safe exit fullscreen ignored:', err);
+        });
+      }
+
+      // Clean up fullscreen event listener
+      if (this._fullscreenChangeHandler) {
+        document.removeEventListener('fullscreenchange', this._fullscreenChangeHandler);
+        this._fullscreenChangeHandler = null;
       }
 
       document.documentElement.removeAttribute('data-focusai-active');
@@ -344,6 +380,8 @@ TABLES
     } catch (e) {
       console.error("[FocusAI] Error disabling Focus Mode:", e);
       return { success: false, error: e.message };
+    } finally {
+      this._isModifyingDOM = false;
     }
   },
 
@@ -478,6 +516,9 @@ Target contains protected learning content.`);
       el.style.position = orig.position;
       el.style.width = orig.width;
       el.style.height = orig.height;
+      if (orig.maxWidth !== undefined) el.style.maxWidth = orig.maxWidth;
+      if (orig.margin !== undefined) el.style.margin = orig.margin;
+      if (orig.padding !== undefined) el.style.padding = orig.padding;
 
       delete originalStyles[styleId];
     }
@@ -486,6 +527,159 @@ Target contains protected learning content.`);
     el.removeAttribute('data-focusai-style-id');
     el.removeAttribute('data-focusai-modified');
     el.removeAttribute('data-focusai-hidden');
+  },
+
+  _isModifyingDOM: false,
+  _observer: null,
+
+  /**
+   * Dynamically adjusts the layout styles of conversation/content containers
+   */
+  _adjustConversationLayout: function(conversationEl) {
+    if (!conversationEl || !(conversationEl instanceof HTMLElement)) return;
+
+    const targets = [conversationEl];
+
+    // Find any direct container or descendant containing tailwind max-w or centered rows
+    const descendants = Array.from(conversationEl.querySelectorAll('div, article, section'));
+    descendants.forEach(desc => {
+      const className = desc.className || "";
+      const hasMaxWidthClass = /\b(max-w-|md:max-w-|lg:max-w-|xl:max-w-)/.test(className);
+      const hasInlineMaxWidth = desc.style.maxWidth;
+      const isCenteredContentRow = className.includes('mx-auto') || className.includes('m-auto') || desc.getAttribute('data-role');
+
+      if (hasMaxWidthClass || hasInlineMaxWidth || isCenteredContentRow) {
+        // Double check that we don't accidentally expand a non-layout block
+        if (!desc.querySelector('.markdown') && !desc.classList.contains('markdown') && desc.tagName !== 'SPAN') {
+          targets.push(desc);
+        }
+      }
+    });
+
+    targets.forEach(el => {
+      const styleId = el.getAttribute('data-focusai-style-id') || `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      if (!el.getAttribute('data-focusai-style-id')) {
+        el.setAttribute('data-focusai-style-id', styleId);
+        el.setAttribute('data-focusai-modified', 'true');
+      }
+
+      if (!originalStyles[styleId]) {
+        originalStyles[styleId] = {
+          element: el,
+          display: el.style.display,
+          visibility: el.style.visibility,
+          opacity: el.style.opacity,
+          position: el.style.position,
+          width: el.style.width,
+          height: el.style.height,
+          maxWidth: el.style.maxWidth,
+          margin: el.style.margin,
+          padding: el.style.padding
+        };
+      }
+
+      // Safely apply wider, comfortable study layout constraints
+      el.style.maxWidth = '950px';
+      el.style.width = '100%';
+      if (el.style.margin === '' || el.style.margin === 'auto') {
+        el.style.margin = '0 auto';
+      }
+    });
+  },
+
+  /**
+   * Safe, non-looping MutationObserver to handle SPA navigation and dynamic DOM changes
+   */
+  _setupMutationObserver: function() {
+    if (this._observer) {
+      this._observer.disconnect();
+      this._observer = null;
+    }
+
+    this._observer = new MutationObserver((mutations) => {
+      if (this._isModifyingDOM) return;
+
+      if (document.documentElement.getAttribute('data-focusai-active') !== 'true') {
+        return;
+      }
+
+      let shouldReapply = false;
+      for (const mut of mutations) {
+        if (mut.addedNodes && mut.addedNodes.length > 0) {
+          for (const node of mut.addedNodes) {
+            if (node instanceof HTMLElement) {
+              if (node.id === 'focusai-floating-panel' || node.getAttribute('data-focusai-modified') === 'true') {
+                continue;
+              }
+              const tag = node.tagName.toUpperCase();
+              if (tag === 'NAV' || tag === 'HEADER' || tag === 'FORM' || tag === 'ARTICLE' || node.querySelector('nav, header, form, article')) {
+                shouldReapply = true;
+                break;
+              }
+            }
+          }
+        }
+        if (shouldReapply) break;
+      }
+
+      if (shouldReapply) {
+        console.log('[FocusAI] MutationObserver detected dynamic layout update. Re-applying Focus Mode...');
+        this._reapplyFocusMode();
+      }
+    });
+
+    const target = document.body;
+    if (target instanceof Node && target.isConnected) {
+      this._observer.observe(target, {
+        childList: true,
+        subtree: true
+      });
+    }
+  },
+
+  /**
+   * Re-applies focus mode layout adjustments and element hiding
+   */
+  _reapplyFocusMode: function() {
+    if (this._isModifyingDOM) return;
+    this._isModifyingDOM = true;
+
+    try {
+      const elements = this.discoverElements();
+
+      const hideTargets = [
+        { data: elements.sidebar, key: "sidebar" },
+        { data: elements.header, key: "header" },
+        { data: elements.headerActions, key: "headerActions" },
+        { data: elements.disclaimer, key: "disclaimer" },
+        { data: elements.composer, key: "composer" }
+      ];
+
+      hideTargets.forEach(target => {
+        const item = target.data;
+        if (item && item.found && item.confidence >= 0.70) {
+          const el = this._resolveElementFromSelector(item.selectorUsed, item.category);
+          if (el) {
+            this._safeHideElement(el, target.key);
+          }
+        }
+      });
+
+      if (elements.conversation && elements.conversation.found && elements.conversation.confidence >= 0.85) {
+        const conversationEl = this._resolveElementFromSelector(elements.conversation.selectorUsed, 'CONVERSATION');
+        if (conversationEl) {
+          this._adjustConversationLayout(conversationEl);
+        }
+      }
+
+      if (!document.getElementById('focusai-floating-panel')) {
+        this._injectFloatingControls();
+      }
+    } catch (e) {
+      console.error('[FocusAI] Error during re-applying Focus Mode:', e);
+    } finally {
+      this._isModifyingDOM = false;
+    }
   },
 
   /**
@@ -525,48 +719,55 @@ Target contains protected learning content.`);
     panel.id = 'focusai-floating-panel';
     panel.style.cssText = `
       position: fixed;
-      bottom: 18px;
-      right: 18px;
+      bottom: 14px;
+      right: 14px;
       z-index: 999999;
-      background-color: rgba(20, 20, 20, 0.75);
+      background-color: rgba(9, 9, 11, 0.85);
       border: 1px solid rgba(255, 255, 255, 0.10);
-      backdrop-filter: blur(4px);
-      border-radius: 8px;
-      padding: 5px;
+      backdrop-filter: blur(6px);
+      border-radius: 6px;
+      padding: 4px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      width: 150px;
+      gap: 3px;
+      width: 125px;
       box-sizing: border-box;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     `;
 
-    // 1. Ask New Question / Hide Search Bar button
+    // 1. Ask New Question / Hide Search Bar button (Primary focus state style)
     const toggleComposerBtn = document.createElement('button');
     toggleComposerBtn.id = 'focusai-toggle-composer-btn';
     toggleComposerBtn.textContent = 'Ask New Question';
     toggleComposerBtn.style.cssText = `
-      background-color: rgba(40, 40, 40, 0.6);
-      color: #D4D4D8;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 5px;
-      height: 28px;
-      padding: 4px 8px;
-      font-size: 11px;
-      font-weight: 500;
+      background-color: rgba(99, 102, 241, 0.15);
+      color: #FAFAFA;
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 4px;
+      height: 24px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 600;
       cursor: pointer;
       width: 100%;
       text-align: center;
-      transition: background-color 0.15s ease, color 0.15s ease;
+      transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
       font-family: inherit;
     `;
     toggleComposerBtn.addEventListener('mouseenter', () => {
-      toggleComposerBtn.style.backgroundColor = 'rgba(60, 60, 60, 0.8)';
-      toggleComposerBtn.style.color = '#FAFAFA';
+      toggleComposerBtn.style.backgroundColor = 'rgba(99, 102, 241, 0.35)';
+      toggleComposerBtn.style.borderColor = 'rgba(99, 102, 241, 0.50)';
     });
     toggleComposerBtn.addEventListener('mouseleave', () => {
-      toggleComposerBtn.style.backgroundColor = 'rgba(40, 40, 40, 0.6)';
-      toggleComposerBtn.style.color = '#D4D4D8';
+      toggleComposerBtn.style.backgroundColor = 'rgba(99, 102, 241, 0.15)';
+      toggleComposerBtn.style.borderColor = 'rgba(99, 102, 241, 0.25)';
+    });
+    toggleComposerBtn.addEventListener('focus', () => {
+      toggleComposerBtn.style.outline = '1px solid #6366F1';
+      toggleComposerBtn.style.outlineOffset = '1px';
+    });
+    toggleComposerBtn.addEventListener('blur', () => {
+      toggleComposerBtn.style.outline = 'none';
     });
 
     toggleComposerBtn.addEventListener('click', () => {
@@ -610,7 +811,66 @@ Target contains protected learning content.`);
       }
     });
 
-    // 2. Exit Focus button
+    // 2. Fullscreen button (Minimal/Subtle)
+    const fullscreenBtn = document.createElement('button');
+    fullscreenBtn.id = 'focusai-fullscreen-btn';
+    fullscreenBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Enter Fullscreen';
+    fullscreenBtn.style.cssText = `
+      background-color: transparent;
+      color: #A1A1AA;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      height: 24px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 500;
+      cursor: pointer;
+      width: 100%;
+      text-align: center;
+      transition: background-color 0.15s ease, color 0.15s ease;
+      font-family: inherit;
+    `;
+    fullscreenBtn.addEventListener('mouseenter', () => {
+      fullscreenBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+      fullscreenBtn.style.color = '#FAFAFA';
+    });
+    fullscreenBtn.addEventListener('mouseleave', () => {
+      fullscreenBtn.style.backgroundColor = 'transparent';
+      fullscreenBtn.style.color = '#A1A1AA';
+    });
+    fullscreenBtn.addEventListener('focus', () => {
+      fullscreenBtn.style.outline = '1px solid #A1A1AA';
+      fullscreenBtn.style.outlineOffset = '1px';
+    });
+    fullscreenBtn.addEventListener('blur', () => {
+      fullscreenBtn.style.outline = 'none';
+    });
+
+    fullscreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error('[FocusAI] Error entering fullscreen:', err);
+        });
+      } else {
+        document.exitFullscreen().catch(err => {
+          console.error('[FocusAI] Error exiting fullscreen:', err);
+        });
+      }
+    });
+
+    // Clean up any existing fullscreen handler first to prevent duplication
+    if (this._fullscreenChangeHandler) {
+      document.removeEventListener('fullscreenchange', this._fullscreenChangeHandler);
+    }
+    this._fullscreenChangeHandler = () => {
+      const btn = document.getElementById('focusai-fullscreen-btn');
+      if (btn) {
+        btn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Enter Fullscreen';
+      }
+    };
+    document.addEventListener('fullscreenchange', this._fullscreenChangeHandler);
+
+    // 3. Exit Focus button (Secondary)
     const exitFocusBtn = document.createElement('button');
     exitFocusBtn.id = 'focusai-exit-focus-btn';
     exitFocusBtn.textContent = 'Exit Focus';
@@ -618,10 +878,10 @@ Target contains protected learning content.`);
       background-color: transparent;
       color: #A1A1AA;
       border: 1px solid transparent;
-      border-radius: 5px;
-      height: 28px;
-      padding: 4px 8px;
-      font-size: 11px;
+      border-radius: 4px;
+      height: 24px;
+      padding: 2px 6px;
+      font-size: 10px;
       font-weight: 500;
       cursor: pointer;
       width: 100%;
@@ -630,12 +890,19 @@ Target contains protected learning content.`);
       font-family: inherit;
     `;
     exitFocusBtn.addEventListener('mouseenter', () => {
-      exitFocusBtn.style.backgroundColor = 'rgba(60, 60, 60, 0.5)';
+      exitFocusBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
       exitFocusBtn.style.color = '#FAFAFA';
     });
     exitFocusBtn.addEventListener('mouseleave', () => {
       exitFocusBtn.style.backgroundColor = 'transparent';
       exitFocusBtn.style.color = '#A1A1AA';
+    });
+    exitFocusBtn.addEventListener('focus', () => {
+      exitFocusBtn.style.outline = '1px solid #A1A1AA';
+      exitFocusBtn.style.outlineOffset = '1px';
+    });
+    exitFocusBtn.addEventListener('blur', () => {
+      exitFocusBtn.style.outline = 'none';
     });
 
     exitFocusBtn.addEventListener('click', () => {
@@ -643,24 +910,43 @@ Target contains protected learning content.`);
       this.disableFocusMode();
 
       // Synchronize the state back to Popup & Service Worker by updating the chrome local storage
-      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+        if (!chrome.runtime.id) {
+          console.log('[FocusAI] Extension context is invalidated; skipping sync message.');
+          return;
+        }
+
         const types = self.FocusAI && self.FocusAI.Messaging && self.FocusAI.Messaging.Types;
         if (types) {
-          chrome.runtime.sendMessage({
-            type: types.SET_FOCUS_STATE,
-            payload: { PharmacistIsHere: true, enabled: false }
-          }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.warn('[FocusAI] Exit focus sync message failed:', chrome.runtime.lastError.message);
+          try {
+            chrome.runtime.sendMessage({
+              type: types.SET_FOCUS_STATE,
+              payload: { PharmacistIsHere: true, enabled: false }
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                const errMsg = chrome.runtime.lastError.message || "";
+                if (errMsg.includes("context invalidated") || errMsg.includes("Extension context invalidated")) {
+                  console.log('[FocusAI] Extension context is invalidated; suppression active.');
+                } else {
+                  console.warn('[FocusAI] Exit focus sync message failed:', errMsg);
+                }
+              } else {
+                console.log('[FocusAI] Exit focus synced successfully via sendMessage:', response);
+              }
+            });
+          } catch (err) {
+            if (err && err.message && (err.message.includes("context invalidated") || err.message.includes("Extension context invalidated"))) {
+              console.log('[FocusAI] Extension context is invalidated; exception caught and suppressed.');
             } else {
-              console.log('[FocusAI] Exit focus synced successfully via sendMessage:', response);
+              console.warn('[FocusAI] Exit focus messaging exception:', err);
             }
-          });
+          }
         }
       }
     });
 
     panel.appendChild(toggleComposerBtn);
+    panel.appendChild(fullscreenBtn);
     panel.appendChild(exitFocusBtn);
     document.body.appendChild(panel);
   },
