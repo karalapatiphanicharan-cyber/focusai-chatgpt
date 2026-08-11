@@ -142,39 +142,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         return true;
 
-      case types.USAGE_HEARTBEAT:
-        const currentTabId = sender.tab ? sender.tab.id : null;
-        if (!currentTabId) {
-          sendResponse({ success: false });
-          break;
-        }
-
-        // Authoritative browser active/focused checking to have 100% precise accounting
-        chrome.tabs.get(currentTabId, (tab) => {
-          if (chrome.runtime.lastError || !tab || !tab.active) {
-            sendResponse({ success: false });
-            return;
-          }
-
-          chrome.windows.get(tab.windowId, (win) => {
-            if (chrome.runtime.lastError || !win || !win.focused) {
-              sendResponse({ success: false });
-              return;
-            }
-
-            // Only record daily starts on actual ChatGPT activation
-            self.FocusAI.UsageTracker.recordFirstOpenToday()
-              .then((startedAt) => {
-                sendResponse({ success: true, startedAt: startedAt });
-              })
-              .catch((err) => {
-                console.error('[FocusAI] Error recording daily startedAt:', err);
-                sendResponse({ success: false });
-              });
-          });
-        });
-        return true;
-
       default:
         sendResponse({
           success: false,
