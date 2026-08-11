@@ -1,12 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const statusIndicator = document.getElementById('status-indicator');
+  const stateNonChatgpt = document.getElementById('state-non-chatgpt');
+  const stateChatgpt = document.getElementById('state-chatgpt');
   const focusToggle = document.getElementById('focus-toggle');
   const focusStateText = document.getElementById('focus-state-text');
   const focusSwitchWrapper = document.getElementById('focus-switch-wrapper');
-  const openChatgptContainer = document.getElementById('open-chatgpt-container');
   const openChatgptBtn = document.getElementById('open-chatgpt-btn');
 
-  // Navigation transitions (Phase 4.1)
+  // Navigation transitions
   const mainView = document.getElementById('main-view');
   const usageView = document.getElementById('usage-view');
   const usageNavLink = document.getElementById('usage-nav-link');
@@ -25,23 +25,15 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.runtime.sendMessage({ type: types.GET_PLATFORM_STATUS }, (response) => {
       if (chrome.runtime.lastError) {
         console.error('Error querying platform status:', chrome.runtime.lastError.message);
-        statusIndicator.className = 'status-value not-detected';
-        statusIndicator.innerHTML = '<span class="status-dot">○</span> Not detected';
-        setToggleInteraction(false);
+        updatePopupViewState(false);
         return;
       }
 
       if (response && response.success && response.data) {
         const isChatGPT = !!response.data.isChatGPT;
-        if (isChatGPT) {
-          statusIndicator.className = 'status-value detected';
-          statusIndicator.innerHTML = '<span class="status-dot">●</span> Detected';
-          setToggleInteraction(true);
-        } else {
-          statusIndicator.className = 'status-value not-detected';
-          statusIndicator.innerHTML = '<span class="status-dot">○</span> Not detected';
-          setToggleInteraction(false);
-        }
+        updatePopupViewState(isChatGPT);
+      } else {
+        updatePopupViewState(false);
       }
     });
 
@@ -111,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ---------------------------------------------------------------------------
-  // USAGE VIEW NAVIGATION & DYNAMIC RENDER (PHASE 4.1)
+  // USAGE VIEW NAVIGATION & DYNAMIC RENDER
   // ---------------------------------------------------------------------------
   if (usageNavLink && mainView && usageView) {
     usageNavLink.addEventListener('click', () => {
@@ -240,23 +232,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Helper function to enable or disable focus toggle controls cleanly
-  function setToggleInteraction(enable) {
-    if (enable) {
+  // Helper function to dynamically update popup views based on platform status
+  function updatePopupViewState(isChatGPT) {
+    if (isChatGPT) {
+      stateNonChatgpt.style.display = 'none';
+      stateChatgpt.style.display = 'block';
       focusToggle.disabled = false;
       if (focusSwitchWrapper) {
         focusSwitchWrapper.classList.remove('disabled');
       }
-      if (openChatgptContainer) {
-        openChatgptContainer.style.display = 'none';
-      }
     } else {
+      stateNonChatgpt.style.display = 'block';
+      stateChatgpt.style.display = 'none';
       focusToggle.disabled = true;
       if (focusSwitchWrapper) {
         focusSwitchWrapper.classList.add('disabled');
-      }
-      if (openChatgptContainer) {
-        openChatgptContainer.style.display = 'block';
       }
     }
   }

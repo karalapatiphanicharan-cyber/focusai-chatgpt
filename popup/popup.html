@@ -12,56 +12,70 @@
     <!-- MAIN POPUP VIEW -->
     <div id="main-view">
       <header class="header">
-        <div class="logo-row">
-          <img src="../icons/icon128.png" alt="FocusAI Logo" class="logo-img">
-          <div class="logo-text-col">
-            <h1 class="logo">FocusAI</h1>
-            <span class="badge">Focus Mode</span>
+        <div class="header-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <div class="logo-row" style="display: flex; align-items: center; gap: 8px;">
+            <img src="../icons/icon128.png" alt="FocusAI Logo" class="logo-img" style="width: 24px; height: 24px; border-radius: 6px;">
+            <div class="logo-text-col" style="display: flex; flex-direction: column; line-height: 1;">
+              <h1 class="logo" style="font-size: 15px; font-weight: 700; color: #FAFAFA; margin: 0; letter-spacing: -0.01em;">FocusAI</h1>
+              <span class="badge" style="font-size: 8px; font-weight: 600; color: #6366F1; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px;">Focus Mode</span>
+            </div>
           </div>
+          <!-- Usage Navigation moved to Top-Right -->
+          <button id="usage-nav-link" class="usage-nav-btn" aria-label="Open Usage View" style="background: none; border: none; color: #6366F1; font-size: 11px; font-weight: 600; cursor: pointer; padding: 4px 6px; font-family: inherit; transition: color 0.15s ease;">Usage →</button>
         </div>
-        <p class="tagline">Focus on what matters.<br>Know how you spend your time.</p>
+        <p class="tagline" style="font-size: 11px; color: #A1A1AA; margin: 10px 0 0 0; line-height: 1.4;">Focus on what matters.<br>Know how you spend your time.</p>
       </header>
 
-      <hr class="divider">
+      <hr class="divider" style="border: 0; height: 1px; background-color: #18181B; margin: 12px 0;">
 
-      <main class="main-content">
-        <!-- ChatGPT Platform Detection Card -->
-        <div class="status-card">
-          <span class="status-label">ChatGPT</span>
-          <div id="status-indicator" class="status-value not-detected">
-            <span class="status-dot">○</span> Not detected
+      <main class="main-content" style="display: flex; flex-direction: column; gap: 12px;">
+
+        <!-- STATE A: NOT ON CHATGPT -->
+        <div id="state-non-chatgpt" style="display: none;">
+          <!-- Status card showing Not detected -->
+          <div class="status-card" style="background-color: #18181B; border: 1px solid #27272A; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);">
+            <span class="status-label" style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #A1A1AA;">ChatGPT</span>
+            <div id="status-indicator-a" class="status-value not-detected" style="font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; color: #A1A1AA;">
+              <span class="status-dot" style="font-size: 12px; line-height: 1;">○</span> Not detected
+            </div>
+          </div>
+          <p class="explanation-text" style="font-size: 11px; color: #A1A1AA; text-align: center; margin: 12px 0;">Open ChatGPT to activate FocusAI.</p>
+          <div id="open-chatgpt-container" class="action-card" style="display: flex; justify-content: center; align-items: center;">
+            <button id="open-chatgpt-btn" class="action-btn" style="background-color: #6366F1; color: #FAFAFA; border: none; border-radius: 6px; padding: 8px 16px; font-size: 11px; font-weight: 600; cursor: pointer; width: 100%; text-align: center; font-family: inherit; transition: background-color 0.15s ease, transform 0.1s ease; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);">Open ChatGPT</button>
           </div>
         </div>
 
-        <!-- Spacer -->
-        <div class="spacer"></div>
-
-        <!-- Focus State Persistent Control Card -->
-        <div class="status-card">
-          <div class="focus-control-header">
-            <span class="status-label">Focus State</span>
-            <label class="switch" id="focus-switch-wrapper">
-              <input type="checkbox" id="focus-toggle">
-              <span class="slider round"></span>
-            </label>
+        <!-- STATE B: CHATGPT DETECTED -->
+        <div id="state-chatgpt" style="display: none;">
+          <!-- Status card showing Detected -->
+          <div class="status-card" style="background-color: #18181B; border: 1px solid #27272A; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); margin-bottom: 12px;">
+            <span class="status-label" style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #A1A1AA;">ChatGPT</span>
+            <div id="status-indicator-b" class="status-value detected" style="font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; color: #22D3EE;">
+              <span class="status-dot" style="font-size: 12px; line-height: 1;">●</span> Detected
+            </div>
           </div>
-          <div id="focus-state-text" class="status-value inactive">
-            Inactive
+
+          <!-- Focus State Card -->
+          <div class="status-card" style="background-color: #18181B; border: 1px solid #27272A; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);">
+            <div class="focus-control-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="status-label" style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #A1A1AA;">Focus State</span>
+              <label class="switch" id="focus-switch-wrapper" style="position: relative; display: inline-block; width: 34px; height: 20px;">
+                <input type="checkbox" id="focus-toggle">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div id="focus-state-text" class="status-value inactive" style="font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; color: #A1A1AA;">
+              Inactive
+            </div>
+          </div>
+
+          <!-- Keyboard Shortcut Hint -->
+          <div class="shortcut-hint" style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; margin-top: 14px;">
+            <span style="font-size: 10px; font-weight: 500; color: #E4E4E7; display: flex; align-items: center; gap: 4px;">⌨ Ctrl + Shift + F</span>
+            <span style="font-size: 8px; color: #71717A; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Toggle Focus Mode</span>
           </div>
         </div>
 
-        <!-- Open ChatGPT Action (hidden by default) -->
-        <div id="open-chatgpt-container" class="action-card" style="display: none;">
-          <button id="open-chatgpt-btn" class="action-btn">Open ChatGPT</button>
-        </div>
-
-        <hr class="divider" style="margin: 6px 0;">
-
-        <!-- Compact Usage Navigation Item -->
-        <div id="usage-nav-link" class="usage-link" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 4px 6px;">
-          <span class="status-label" style="font-size: 11px; text-transform: none; font-weight: 500; color: #A1A1AA; letter-spacing: normal;">Usage</span>
-          <span style="font-size: 11px; color: #6366F1; font-weight: 600;">Weekly ChatGPT starts →</span>
-        </div>
       </main>
     </div>
 
@@ -86,12 +100,6 @@
       </div>
     </div>
 
-    <hr class="divider">
-
-    <footer class="footer">
-      <p class="footer-title">Phase 4.1</p>
-      <p class="footer-subtitle">Usage View + Weekly ChatGPT starts</p>
-    </footer>
   </div>
 
   <script src="../core/messaging/messages.js"></script>
