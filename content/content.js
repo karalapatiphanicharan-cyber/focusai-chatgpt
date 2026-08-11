@@ -187,6 +187,16 @@
       try {
         if (message && message.type === "FOCUS_STATE_CHANGED") {
           console.log('[FocusAI] Received FOCUS_STATE_CHANGED event. New state enabled:', message.payload ? message.payload.enabled : false);
+
+          const focusEngine = self.FocusAI && self.FocusAI.FocusEngine;
+          if (focusEngine) {
+            if (message.payload && message.payload.enabled === true) {
+              focusEngine.enableFocusMode();
+            } else if (message.payload && message.payload.enabled === false) {
+              focusEngine.disableFocusMode();
+            }
+          }
+
           sendResponse({
             success: true,
             message: "Acknowledge FOCUS_STATE_CHANGED"
@@ -213,6 +223,23 @@
       }
       return true;
     });
+
+    // On load, fetch and automatically synchronize focus state if enabled
+    const types = self.FocusAI && self.FocusAI.Messaging && self.FocusAI.Messaging.Types;
+    if (types) {
+      chrome.runtime.sendMessage({ type: types.GET_FOCUS_STATE }, (response) => {
+        if (!chrome.runtime.lastError && response && response.success && response.data) {
+          if (response.data.enabled === true) {
+            console.log('[FocusAI] Persistent Focus State is ON. Restoring Focus Mode on startup...');
+            setTimeout(() => {
+              if (self.FocusAI && self.FocusAI.FocusEngine && self.FocusAI.FocusEngine.enableFocusMode) {
+                self.FocusAI.FocusEngine.enableFocusMode();
+              }
+            }, 1000); // 1-second grace period for full element rendering
+          }
+        }
+      });
+    }
   } else {
     console.warn('[FocusAI] chrome.runtime messaging API is not available in this context.');
   }

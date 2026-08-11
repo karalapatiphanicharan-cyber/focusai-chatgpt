@@ -5,59 +5,373 @@
 
 self.FocusAI = self.FocusAI || {};
 
+// Shared state for original inline styling to ensure complete, lossless restoration and absolute idempotency.
+// Using a local memory object to store styling since Maps can't be easily serialized, but content scripts persist this in context.
+const originalStyles = {};
+
 self.FocusAI.FocusEngine = {
-  /**
-   * Enables Focus Mode on the page (Placeholder for future phases).
-   * @returns {Object} A safe result indicating the feature is not implemented yet.
-   */
-  enableFocusMode: function() {
-    console.log("FocusEngine: enableFocusMode called (not implemented in Phase -2)");
-    return {
-      success: false,
-      implemented: false,
-      message: "Focus Mode functionality is not implemented in Phase -2."
-    };
-  },
-
-  /**
-   * Disables Focus Mode on the page (Placeholder for future phases).
-   * @returns {Object} A safe result indicating the feature is not implemented yet.
-   */
-  disableFocusMode: function() {
-    console.log("FocusEngine: disableFocusMode called (not implemented in Phase -2)");
-    return {
-      success: false,
-      implemented: false,
-      message: "Focus Mode functionality is not implemented in Phase -2."
-    };
-  },
-
   /**
    * Retrieves the current Focus Mode status.
    * @returns {Object} The default status structure.
    */
   getFocusState: function() {
     return {
-      focusEnabled: false,
-      implemented: false
+      focusEnabled: document.documentElement.getAttribute('data-focusai-active') === 'true',
+      implemented: true
     };
   },
 
   /**
-   * Safe ChatGPT UI Discovery & Element Classification (PHASE -2 CORRECTED)
-   * Safely analyzes the live DOM to discover, classify, and evaluate elements,
-   * distinguishing between protected learning content and future hide candidates.
-   *
-   * This function is STRICTLY READ-ONLY. It never modifies any styles, DOM, or layouts.
-   *
-   * @returns {Object} A serializable structured metadata report of discovered elements.
+   * Enables Focus Mode on the page (Phase -3).
+   * Safely hides non-content elements reversibly while keeping the conversation fully visible.
+   * @returns {Object} A result structure indicating success/failure.
+   */
+  enableFocusMode: function() {
+    console.log("[FocusAI] FocusEngine: enableFocusMode called");
+
+    try {
+      // 1. Idempotency Check: If already active, do nothing
+      if (document.documentElement.getAttribute('data-focusai-active') === 'true') {
+        console.log("[FocusAI] Focus Mode is already enabled. Skipping...");
+        return { success: true, message: "Focus Mode already active." };
+      }
+
+      // Mark Focus Mode active on the document element
+      document.documentElement.setAttribute('data-focusai-active', 'true');
+
+      // 2. Discover ChatGPT UI elements on the page
+      const elements = this.discoverElements();
+
+      // Elements we want to hide if confidently found
+      const hideTargets = [
+        { data: elements.sidebar, key: "sidebar" },
+        { data: elements.header, key: "header" },
+        { data: elements.headerActions, key: "headerActions" },
+        { data: elements.disclaimer, key: "disclaimer" },
+        { data: elements.composer, key: "composer" }
+      ];
+
+      hideTargets.forEach(target => {
+        const item = target.data;
+        // Check confidence threshold (>= 0.70 to handle disclaimer)
+        if (item && item.found && item.confidence >= 0.70) {
+          // Resolve the actual element from DOM
+          const el = this._resolveElementFromSelector(item.selectorUsed, item.category);
+          if (el) {
+            this._safeHideElement(el, target.key);
+          }
+        }
+      });
+
+      // 3. Create and inject the floating FocusAI controls in the bottom-right
+      this._injectFloatingControls();
+
+      console.log("[FocusAI] Focus Mode successfully enabled!");
+      return { success: true, message: "Focus Mode enabled." };
+    } catch (e) {
+      console.error("[FocusAI] Error enabling Focus Mode:", e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  /**
+   * Disables Focus Mode on the page (Phase -3).
+   * Restores all hidden elements back to their exact original visual style.
+   * @returns {Object} A result structure indicating success/failure.
+   */
+  disableFocusMode: function() {
+    console.log("[FocusAI] FocusEngine: disableFocusMode called");
+
+    try {
+      // 1. Idempotency Check: If already inactive, do nothing
+      if (document.documentElement.getAttribute('data-focusai-active') !== 'true') {
+        console.log("[FocusAI] Focus Mode is already disabled. Skipping...");
+        return { success: true, message: "Focus Mode already inactive." };
+      }
+
+      document.documentElement.removeAttribute('data-focusai-active');
+
+      // 2. Query and restore all elements modified by FocusAI
+      const modifiedElements = Array.from(document.querySelectorAll('[data-focusai-modified="true"]'));
+      modifiedElements.forEach(el => {
+        this._safeRestoreElement(el);
+      });
+
+      // Also scan originalStyles remaining keys just in case elements are detached or need clean up
+      Object.keys(originalStyles).forEach(key => {
+        const item = originalStyles[key];
+        if (item && item.element && document.body.contains(item.element)) {
+          this._safeRestoreElement(item.element);
+        }
+        delete originalStyles[key];
+      });
+
+      // 3. Remove floating controls
+      this._removeFloatingControls();
+
+      console.log("[FocusAI] Focus Mode successfully disabled.");
+      return { success: true, message: "Focus Mode disabled." };
+    } catch (e) {
+      console.error("[FocusAI] Error disabling Focus Mode:", e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  /**
+   * Safe, reversible element hider
+   */
+  _safeHideElement: function(el, key) {
+    if (!el) return;
+
+    // Check if we already have this element stored
+    if (el.getAttribute('data-focusai-modified') === 'true') {
+      return;
+    }
+
+    // Save style states
+    const styleId = `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    el.setAttribute('data-focusai-style-id', styleId);
+    el.setAttribute('data-focusai-modified', 'true');
+    el.setAttribute('data-focusai-hidden', 'true');
+
+    originalStyles[styleId] = {
+      element: el,
+      display: el.style.display,
+      visibility: el.style.visibility,
+      opacity: el.style.opacity,
+      position: el.style.position,
+      width: el.style.width,
+      height: el.style.height
+    };
+
+    // Apply hiding
+    el.style.display = 'none';
+  },
+
+  /**
+   * Safe, exact element restorer
+   */
+  _safeRestoreElement: function(el) {
+    if (!el) return;
+
+    const styleId = el.getAttribute('data-focusai-style-id');
+    if (styleId && originalStyles[styleId]) {
+      const orig = originalStyles[styleId];
+
+      // Restore styles exactly
+      el.style.display = orig.display;
+      el.style.visibility = orig.visibility;
+      el.style.opacity = orig.opacity;
+      el.style.position = orig.position;
+      el.style.width = orig.width;
+      el.style.height = orig.height;
+
+      delete originalStyles[styleId];
+    }
+
+    // Remove all FocusAI attributes
+    el.removeAttribute('data-focusai-style-id');
+    el.removeAttribute('data-focusai-modified');
+    el.removeAttribute('data-focusai-hidden');
+  },
+
+  /**
+   * Resolves the actual live DOM element from its selector used during discovery
+   */
+  _resolveElementFromSelector: function(selector, category) {
+    if (!selector) return null;
+
+    // Text matching selector fallback
+    if (selector.startsWith('element-containing-text:')) {
+      const allParagraphsAndSpans = Array.from(document.querySelectorAll('p, span, div'));
+      return allParagraphsAndSpans.find(el => {
+        if (el.children.length > 2) return false;
+        if (el.querySelector('form, textarea, nav, header')) return false; // Negative guard
+        const text = (el.textContent || "").toLowerCase();
+        return (
+          text.includes("can make mistakes") ||
+          text.includes("check important info") ||
+          text.includes("check response") ||
+          text.includes("pueden cometer") ||
+          text.includes("fehler machen") ||
+          text.includes("peut se tromper")
+        );
+      });
+    }
+
+    // Standard CSS Selector
+    try {
+      return document.querySelector(selector);
+    } catch (e) {
+      console.warn(`[FocusAI] Failed to query selector "${selector}":`, e);
+      return null;
+    }
+  },
+
+  /**
+   * Insets the compact FocusAI floating controls at bottom-right
+   */
+  _injectFloatingControls: function() {
+    // Prevent duplicated panels
+    if (document.getElementById('focusai-floating-panel')) {
+      return;
+    }
+
+    // Create container
+    const panel = document.createElement('div');
+    panel.id = 'focusai-floating-panel';
+    panel.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 999999;
+      background-color: #18181B;
+      border: 1px solid #27272A;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      width: 160px;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    `;
+
+    // 1. Ask New Question / Hide Search Bar button
+    const toggleComposerBtn = document.createElement('button');
+    toggleComposerBtn.id = 'focusai-toggle-composer-btn';
+    toggleComposerBtn.textContent = 'Ask New Question';
+    toggleComposerBtn.style.cssText = `
+      background-color: #6366F1;
+      color: #FAFAFA;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      text-align: center;
+      transition: background-color 0.2s ease;
+      font-family: inherit;
+    `;
+    toggleComposerBtn.addEventListener('mouseenter', () => toggleComposerBtn.style.backgroundColor = '#4F46E5');
+    toggleComposerBtn.addEventListener('mouseleave', () => toggleComposerBtn.style.backgroundColor = '#6366F1');
+
+    toggleComposerBtn.addEventListener('click', () => {
+      // Find the real composer
+      const composerElement = this._resolveElementFromSelector('#composer-form', 'COMPOSER') ||
+                              this._resolveElementFromSelector('form', 'COMPOSER') ||
+                              document.querySelector('form');
+
+      if (!composerElement) {
+        console.warn("[FocusAI] Could not find the real ChatGPT composer form to toggle.");
+        return;
+      }
+
+      const isHidden = composerElement.style.display === 'none' || composerElement.getAttribute('data-focusai-hidden') === 'true';
+
+      if (isHidden) {
+        // Show real composer
+        composerElement.style.display = '';
+        composerElement.removeAttribute('data-focusai-hidden');
+        toggleComposerBtn.textContent = 'Hide Search Bar';
+
+        // Focus the input if safely possible
+        const textarea = composerElement.querySelector('#prompt-textarea') || composerElement.querySelector('textarea') || composerElement.querySelector('[contenteditable="true"]');
+        if (textarea) {
+          setTimeout(() => {
+            try {
+              textarea.focus();
+            } catch (err) {
+              console.debug("[FocusAI] Safe focus ignored:", err);
+            }
+          }, 50);
+        }
+
+        // Scroll the workspace page appropriately
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      } else {
+        // Hide real composer
+        composerElement.style.display = 'none';
+        composerElement.setAttribute('data-focusai-hidden', 'true');
+        toggleComposerBtn.textContent = 'Ask New Question';
+      }
+    });
+
+    // 2. Exit Focus button
+    const exitFocusBtn = document.createElement('button');
+    exitFocusBtn.id = 'focusai-exit-focus-btn';
+    exitFocusBtn.textContent = 'Exit Focus';
+    exitFocusBtn.style.cssText = `
+      background-color: transparent;
+      color: #A1A1AA;
+      border: 1px solid #3F3F46;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      text-align: center;
+      transition: background-color 0.2s ease, color 0.2s ease;
+      font-family: inherit;
+    `;
+    exitFocusBtn.addEventListener('mouseenter', () => {
+      exitFocusBtn.style.backgroundColor = '#27272A';
+      exitFocusBtn.style.color = '#FAFAFA';
+    });
+    exitFocusBtn.addEventListener('mouseleave', () => {
+      exitFocusBtn.style.backgroundColor = 'transparent';
+      exitFocusBtn.style.color = '#A1A1AA';
+    });
+
+    exitFocusBtn.addEventListener('click', () => {
+      // Disable Focus Mode first locally
+      this.disableFocusMode();
+
+      // Synchronize the state back to Popup & Service Worker by updating the chrome local storage
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        const types = self.FocusAI && self.FocusAI.Messaging && self.FocusAI.Messaging.Types;
+        if (types) {
+          chrome.runtime.sendMessage({
+            type: types.SET_FOCUS_STATE,
+            payload: { enabled: false }
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.warn('[FocusAI] Exit focus sync message failed:', chrome.runtime.lastError.message);
+            } else {
+              console.log('[FocusAI] Exit focus synced successfully via sendMessage:', response);
+            }
+          });
+        }
+      }
+    });
+
+    panel.appendChild(toggleComposerBtn);
+    panel.appendChild(exitFocusBtn);
+    document.body.appendChild(panel);
+  },
+
+  /**
+   * Removes floating FocusAI controls
+   */
+  _removeFloatingControls: function() {
+    const panel = document.getElementById('focusai-floating-panel');
+    if (panel) {
+      panel.remove();
+    }
+  },
+
+  /**
+   * Safe ChatGPT UI Discovery & Element Classification (PHASE -2)
    */
   discoverElements: function() {
     if (typeof document === 'undefined') {
       return { success: false, error: "document object is unavailable." };
     }
 
-    // First, classify message turns to help with userMessages and assistantResponses
     const turns = this._classifyMessageTurns();
 
     const report = {
@@ -540,14 +854,11 @@ self.FocusAI.FocusEngine = {
     let tag = "N/A";
     let dimensions = "N/A";
 
-    // 100% correct, locale-independent, and precise identification:
-    // For each assistant response turn, query all button elements that are OUTSIDE the main markdown/prose content block!
     const actionButtons = [];
     if (assistantTurns && assistantTurns.length > 0) {
       assistantTurns.forEach(art => {
         const buttons = Array.from(art.querySelectorAll('button'));
         buttons.forEach(btn => {
-          // Filter out buttons located inside the markdown/prose body
           if (!btn.closest('.markdown') && !btn.closest('.prose')) {
             actionButtons.push(btn);
           }
@@ -694,6 +1005,7 @@ self.FocusAI.FocusEngine = {
     const allParagraphsAndSpans = Array.from(document.querySelectorAll('p, span, div'));
     let element = allParagraphsAndSpans.find(el => {
       if (el.children.length > 2) return false;
+      if (el.querySelector('form, textarea, nav, header')) return false; // Negative guard
       const text = (el.textContent || "").toLowerCase();
       return (
         text.includes("can make mistakes") ||
@@ -705,13 +1017,13 @@ self.FocusAI.FocusEngine = {
       );
     });
 
-    // Fallback position tracking: find elements below the last form (which represents the composer)
     if (!element) {
       const forms = Array.from(document.querySelectorAll('form'));
       if (forms.length > 0) {
         const lastForm = forms[forms.length - 1];
         const elementsBelowForm = Array.from(document.querySelectorAll('p, span, div')).filter(el => {
           if (el.children.length > 0) return false;
+          if (el.querySelector('form, textarea, nav, header')) return false; // Negative guard
           const rect = el.getBoundingClientRect();
           const formRect = lastForm.getBoundingClientRect();
           return rect.top > formRect.bottom && rect.height > 5 && rect.height < 45;
