@@ -210,8 +210,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               if (!dailyUsage[today]) {
                 dailyUsage[today] = {
                   startedAt: null,
-                  totalActiveSeconds: 0,
-                  sessions: 0
+                  totalScreenTimeSeconds: 0,
+                  promptCount: 0
                 };
               }
 
@@ -224,8 +224,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
 
               if (!trackingSession) {
-                // Brand new session started!
-                record.sessions += 1;
+                // Brand new screen time session started!
                 trackingSession = {
                   activeTabId: currentTabId,
                   lastHeartbeatTime: now,
@@ -238,8 +237,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   // Resume session cleanly
                   const pauseDuration = now - trackingSession.pausedAt;
                   if (pauseDuration > 10000) {
-                    // Swept away for > 10s: treat as a new session block
-                    record.sessions += 1;
                     trackingSession.sessionStartTime = now;
                   }
                   trackingSession.paused = false;
@@ -249,10 +246,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 } else {
                   // Switched between ChatGPT Tab A and ChatGPT Tab B
                   if (trackingSession.activeTabId !== currentTabId) {
-                    if (now - trackingSession.lastHeartbeatTime > 10000) {
-                      record.sessions += 1;
-                      trackingSession.sessionStartTime = now;
-                    }
                     trackingSession.activeTabId = currentTabId;
                   }
 
@@ -261,7 +254,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                   if (sessionDelta > 0) {
                     const cappedDelta = Math.min(5, sessionDelta);
-                    record.totalActiveSeconds += cappedDelta;
+                    record.totalScreenTimeSeconds += cappedDelta;
                     // Preserve fractional milliseconds precisely to completely solve quantization error!
                     trackingSession.lastHeartbeatTime = trackingSession.lastHeartbeatTime + (sessionDelta * 1000);
                   }
@@ -317,7 +310,7 @@ function pauseCurrentSession() {
     const today = self.FocusAI.UsageTracker.getLocalDateString();
     if (dailyUsage[today]) {
       if (elapsedSec > 0 && elapsedSec <= 10) {
-        dailyUsage[today].totalActiveSeconds += elapsedSec;
+        dailyUsage[today].totalScreenTimeSeconds += elapsedSec;
       }
     }
 

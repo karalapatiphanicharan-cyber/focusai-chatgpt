@@ -17,6 +17,92 @@
     }
   }
 
+  // -------------------------------------------------------------------------
+  // SAFE MESSAGING LAYERS & LIFECYCLE (PHASE -4 HOTFIX)
+  // -------------------------------------------------------------------------
+  let isContextInvalidated = false;
+
+  function cleanupOldContentScript() {
+    if (isContextInvalidated) return;
+    isContextInvalidated = true;
+
+    console.log('[FocusAI] Extension context invalidated; stopping old content-script communication.');
+
+    // 1. Clear intervals
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+    if (navigationIntervalId) {
+      clearInterval(navigationIntervalId);
+      navigationIntervalId = null;
+    }
+
+    // 2. Disconnect observers
+    if (promptObserver) {
+      promptObserver.disconnect();
+    }
+
+    // 3. Remove event listeners safely
+    try {
+      document.removeEventListener('visibilitychange', checkVisibilityAndReport);
+      window.removeEventListener('focus', checkVisibilityAndReport);
+      window.removeEventListener('blur', checkVisibilityAndReport);
+      document.removeEventListener('click', handleUserSubmitClick, true);
+      document.removeEventListener('keydown', handleUserSubmitKeydown, true);
+    } catch (e) {
+      // ignore safe errors on cleanup
+    }
+  }
+
+  function safeSendMessage(message, callback) {
+    if (isContextInvalidated) return false;
+
+    try {
+      if (
+        typeof chrome === "undefined" ||
+        !chrome.runtime ||
+        typeof chrome.runtime.sendMessage !== "function"
+      ) {
+        cleanupOldContentScript();
+        return false;
+      }
+
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          const err = chrome.runtime.lastError.message || "";
+          if (err.includes("context invalidated") || err.includes("Extension context invalidated")) {
+            cleanupOldContentScript();
+          }
+          return;
+        }
+
+        if (callback) {
+          try {
+            callback(response);
+          } catch (cbErr) {
+            console.warn('[FocusAI] Callback error:', cbErr);
+          }
+        }
+      });
+
+      return true;
+
+    } catch (error) {
+      if (
+        error &&
+        typeof error.message === "string" &&
+        (error.message.includes("context invalidated") || error.message.includes("Extension context invalidated"))
+      ) {
+        cleanupOldContentScript();
+        return false;
+      }
+
+      console.warn("[FocusAI] Runtime messaging failed:", error);
+      return false;
+    }
+  }
+
   // Helper function to format and print the specified development console report
   function printDiscoveryReport(report) {
     if (!report) return;
@@ -174,12 +260,8 @@
 
   // Basic startup handshake
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-    chrome.runtime.sendMessage({ type: "PING" }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.warn('[FocusAI] Handshake failed or service worker inactive:', chrome.runtime.lastError.message);
-      } else {
-        console.log('[FocusAI] Handshake success. Service worker responded:', response);
-      }
+    safeSendMessage({ type: "PING" }, (response) => {
+      console.log('[FocusAI] Handshake success. Service worker responded:', response);
     });
 
     // Listen for state synchronization and discovery requests
@@ -227,8 +309,8 @@
     // On load, fetch and automatically synchronize focus state if enabled
     const types = self.FocusAI && self.FocusAI.Messaging && self.FocusAI.Messaging.Types;
     if (types) {
-      chrome.runtime.sendMessage({ type: types.GET_FOCUS_STATE }, (response) => {
-        if (!chrome.runtime.lastError && response && response.success && response.data) {
+      safeSendMessage({ type: types.GET_FOCUS_STATE }, (response) => {
+        if (response && response.success && response.data) {
           if (response.data.enabled === true) {
             console.log('[FocusAI] Persistent Focus State is ON. Restoring Focus Mode on startup...');
             setTimeout(() => {
@@ -247,15 +329,9 @@
     let heartbeatInterval = null;
 
     function sendHeartbeat() {
-      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({
-          type: "USAGE_HEARTBEAT"
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            // Ignore background worker sleep/closed channel error
-          }
-        });
-      }
+      safeSendMessage({
+        type: "USAGE_HEARTBEAT"
+      });
     }
 
     function startHeartbeat() {
@@ -294,16 +370,16 @@
     let submitTimeout = null;
 
     // Intent detectors for user submits
-    document.addEventListener('click', (e) => {
+    function handleUserSubmitClick(e) {
       const sendBtn = e.target.closest('button[data-testid*="send-button"], button[aria-label*="Send"], [class*="send"]');
       if (sendBtn) {
         userSubmittedPrompt = true;
         if (submitTimeout) clearTimeout(submitTimeout);
         submitTimeout = setTimeout(() => { userSubmittedPrompt = false; }, 8000);
       }
-    }, true);
+    }
 
-    document.addEventListener('keydown', (e) => {
+    function handleUserSubmitKeydown(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
         const textarea = e.target.closest('#prompt-textarea, textarea');
         if (textarea) {
@@ -312,7 +388,10 @@
           submitTimeout = setTimeout(() => { userSubmittedPrompt = false; }, 8000);
         }
       }
-    }, true);
+    }
+
+    document.addEventListener('click', handleUserSubmitClick, true);
+    document.addEventListener('keydown', handleUserSubmitKeydown, true);
 
     function scanAndMarkUserMessages() {
       const userMessages = document.querySelectorAll(
@@ -332,15 +411,9 @@
     }
 
     function reportNewUserPrompt() {
-      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({
-          type: "INCREMENT_PROMPT"
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            // Ignore channel errors
-          }
-        });
-      }
+      safeSendMessage({
+        type: "INCREMENT_PROMPT"
+      });
     }
 
     // Initial mark of any current historical user messages
@@ -354,7 +427,7 @@
 
     // Detect chat/URL navigations to refresh initial markings cleanly
     let lastUrl = window.location.href;
-    setInterval(() => {
+    let navigationIntervalId = setInterval(() => {
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
         scanAndMarkUserMessages();
